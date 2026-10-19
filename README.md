@@ -18,7 +18,7 @@ A lightweight plain-text notepad that lives in the macOS menu bar. [English belo
 需要 macOS 13 以上，以及 Xcode 或 Command Line Tools（`xcode-select --install`）。
 
 ```sh
-git clone https://github.com/<你的帳號>/MenuNote.git
+git clone https://github.com/janfon-source/MenuNote.git
 cd MenuNote
 ./build.sh install   # 編譯並安裝到 /Applications/隨手記.app
 ```
@@ -43,7 +43,7 @@ cd MenuNote
 Requires macOS 13 or later and Xcode or the Command Line Tools (`xcode-select --install`).
 
 ```sh
-git clone https://github.com/<your-account>/MenuNote.git
+git clone https://github.com/janfon-source/MenuNote.git
 cd MenuNote
 ./build.sh install   # builds and installs /Applications/隨手記.app
 ```
