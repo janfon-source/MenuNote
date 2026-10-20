@@ -17,6 +17,8 @@ enum MainMenu {
         add(file, tr("儲存", "Save"), #selector(EditorViewController.saveDocument(_:)), "s", target: editor)
         add(file, tr("另存新檔…", "Save As…"), #selector(EditorViewController.saveDocumentAs(_:)), "S", target: editor)
         file.addItem(.separator())
+        add(file, tr("以郵件寄出…", "Email…"), #selector(EditorViewController.emailDocument(_:)), "E", target: editor)
+        file.addItem(.separator())
         add(file, tr("列印…", "Print…"), #selector(EditorViewController.printDocument(_:)), "p", target: editor)
         add(file, tr("關閉視窗", "Close Window"), #selector(EditorViewController.closePopover(_:)), "w", target: editor)
 
@@ -38,8 +40,12 @@ enum MainMenu {
         add(format, tr("放大字體", "Larger Font"), #selector(EditorViewController.biggerFont(_:)), "+", target: editor)
         add(format, tr("縮小字體", "Smaller Font"), #selector(EditorViewController.smallerFont(_:)), "-", target: editor)
         add(format, tr("預設字體大小", "Default Font Size"), #selector(EditorViewController.resetFont(_:)), "0", target: editor)
+        add(format, tr("顯示行號", "Show Line Numbers"), #selector(EditorViewController.toggleLineNumbers(_:)), "l", target: editor)
+            .keyEquivalentModifierMask = [.command, .option]
         format.addItem(.separator())
-        add(format, tr("Markdown 預覽", "Markdown Preview"), #selector(EditorViewController.toggleMarkdownPreview(_:)), "M", target: editor)
+        add(format, tr("整頁 Markdown 預覽", "Full Markdown Preview"), #selector(EditorViewController.toggleMarkdownPreview(_:)), "M", target: editor)
+        add(format, tr("左右分割 Markdown 預覽", "Side-by-Side Markdown Preview"), #selector(EditorViewController.toggleSplitPreview(_:)), "M", target: editor)
+            .keyEquivalentModifierMask = [.command, .option, .shift]
 
         return main
     }

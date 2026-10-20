@@ -32,7 +32,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
             fontSize = min(36, max(10, fontSize))
             UserDefaults.standard.set(Double(fontSize), forKey: Keys.fontSize)
             textView.font = .systemFont(ofSize: fontSize)
-            if showingPreview { renderPreview() }
+            lineNumbers?.updateThickness()
+            if previewMode != .off { renderPreview() }
         }
     }
 
@@ -41,11 +42,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         static let fontSize = "menunote.fontSize"
         static let defaultFontSize = 14.0
         static let size = "menunote.size"
-        static let markdownPreview = "menunote.markdownPreview"
+        static let markdownPreview = "menunote.markdownPreview"   // before split view: a Bool for "full"
+        static let previewMode = "menunote.previewMode"
+        static let lineNumbers = "menunote.lineNumbers"
     }
 
     static let defaultSize = NSSize(width: 440, height: 520)
-    static let minSize = NSSize(width: 340, height: 240)
+    static let minSize = NSSize(width: 380, height: 240)   // wide enough for every toolbar button
 
     /// The popover size the user last dragged to, kept across launches.
     private var savedSize: NSSize {
@@ -67,25 +70,71 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
     private var shareButton: NSButton!
     private var pinButton: NSButton!
     private var markdownButton: NSButton!
+    private var splitButton: NSButton!
 
-    /// A read-only rendering of a Markdown file, shown in place of the editor.
+    /// A read-only rendering of the text as Markdown, shown in place of the editor or beside it.
     private let previewScrollView = NSTextView.scrollableTextView()
     private var previewView: NSTextView { previewScrollView.documentView as! NSTextView }
+    private let splitDivider = NSBox()
+    private var equalSplit: NSLayoutConstraint!
+    /// Set while one side is being scrolled to match the other, so the other doesn't echo it back.
+    private var syncingScroll = false
 
     private var isMarkdown: Bool {
         fileURL.map { MarkdownRenderer.fileExtensions.contains($0.pathExtension.lowercased()) } ?? false
     }
 
-    /// Whether the Markdown preview is showing. Remembered, so the next Markdown file opens the same way.
-    private var showingPreview = false {
+    enum PreviewMode: String {
+        case off, full, split
+    }
+
+    /// The mode Markdown files open in, i.e. the last one used on a Markdown file.
+    private var savedPreviewMode: PreviewMode {
+        let defaults = UserDefaults.standard
+        return defaults.string(forKey: Keys.previewMode).flatMap(PreviewMode.init)
+            ?? (defaults.bool(forKey: Keys.markdownPreview) ? .full : .off)
+    }
+
+    /// Any text can be previewed; the mode is remembered only for Markdown files.
+    private var previewMode = PreviewMode.off {
         didSet {
-            if isMarkdown { UserDefaults.standard.set(showingPreview, forKey: Keys.markdownPreview) }
-            if showingPreview { renderPreview() }
-            scrollView.isHidden = showingPreview
-            previewScrollView.isHidden = !showingPreview
+            let top = editorTopCharacter()
+            if isMarkdown { UserDefaults.standard.set(previewMode.rawValue, forKey: Keys.previewMode) }
+            if previewMode != .off { renderPreview() }
+            scrollView.isHidden = previewMode == .full
+            previewScrollView.isHidden = previewMode == .off
+            splitDivider.isHidden = previewMode != .split
+            equalSplit?.isActive = previewMode == .split   // nil until the view loads
             updateMarkdownButton()
             focusText()
+            if previewMode != .full {
+                // The editor's width changed. Once laid out, put back the line that was at its top
+                // (AppKit shifts it a little as the text rewraps), then start the preview there too.
+                view.layoutSubtreeIfNeeded()
+                scrollEditor(toTop: top)
+                if previewMode == .split { syncScroll(from: scrollView, to: previewScrollView) }
+            }
         }
+    }
+
+    /// The first character visible at the top of the editor, or nil when it's scrolled to the top.
+    private func editorTopCharacter() -> Int? {
+        let visible = textView.visibleRect
+        guard visible.minY > textView.textContainerOrigin.y, let layout = textView.layoutManager,
+              let container = textView.textContainer else { return nil }
+        let point = NSPoint(x: 0, y: visible.minY - textView.textContainerOrigin.y)
+        return layout.characterIndexForGlyph(at: layout.glyphIndex(for: point, in: container))
+    }
+
+    private func scrollEditor(toTop character: Int?) {
+        let clip = scrollView.contentView
+        var y: CGFloat = 0
+        if let character, let layout = textView.layoutManager, character < (textView.string as NSString).length {
+            let line = layout.lineFragmentRect(forGlyphAt: layout.glyphIndexForCharacter(at: character), effectiveRange: nil)
+            y = line.minY + textView.textContainerOrigin.y
+        }
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: y))
+        scrollView.reflectScrolledClipView(clip)
     }
 
     private var displayName: String { fileURL?.lastPathComponent ?? tr("未命名", "Untitled") }
@@ -102,7 +151,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         shareButton = toolButton("square.and.arrow.up", "分享到備忘錄、訊息或其他 App", "Share to Notes, Messages or other apps", #selector(share(_:)))
         pinButton = toolButton("pin", "釘選：點其他地方時不關閉視窗（按 Esc 仍可隱藏）", "Pin: keep the window open when clicking elsewhere (Esc still hides it)", #selector(togglePin(_:)))
 
-        markdownButton = toolButton("doc.richtext", "切換 Markdown 預覽（⇧⌘M）", "Toggle Markdown Preview (⇧⌘M)", #selector(toggleMarkdownPreview(_:)))
+        markdownButton = toolButton("doc.richtext", "整頁 Markdown 預覽（⇧⌘M）", "Full Markdown Preview (⇧⌘M)", #selector(toggleMarkdownPreview(_:)))
+        splitButton = toolButton("rectangle.split.2x1", "編輯區旁顯示 Markdown 預覽（⌥⇧⌘M）", "Markdown Preview Beside the Text (⌥⇧⌘M)", #selector(toggleSplitPreview(_:)))
         let spacer = NSView()
         let toolbar = NSStackView(views: [
             toolButton("doc.badge.plus", "新增（⌘N）", "New (⌘N)", #selector(newDocument(_:))),
@@ -111,7 +161,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
             divider(),
             shareButton,
             toolButton("printer", "列印（⌘P）", "Print (⌘P)", #selector(printDocument(_:))),
+            toolButton("face.smiling", "插入 Emoji", "Insert Emoji", #selector(showEmojiMenu(_:))),
             markdownButton,
+            splitButton,
             spacer,
             pinButton,
             toolButton("ellipsis.circle", "更多", "More", #selector(showMoreMenu(_:))),
@@ -149,7 +201,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         separatorTop.boxType = .separator
         separatorBottom.boxType = .separator
 
-        let column = NSStackView(views: [header, separatorTop, scrollView, previewScrollView, separatorBottom, footer])
+        // A filled box rather than a separator box, which keeps its own height instead of stretching.
+        splitDivider.boxType = .custom
+        splitDivider.borderWidth = 0
+        splitDivider.fillColor = .separatorColor
+        splitDivider.isHidden = previewMode != .split   // a file opened from Finder may have set the mode already
+        splitDivider.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        let body = NSStackView(views: [scrollView, splitDivider, previewScrollView])
+        body.spacing = 0
+        body.alignment = .height
+        // Take all the height the header and footer leave, as the scroll views did on their own.
+        body.setHuggingPriority(.init(1), for: .vertical)
+        equalSplit = previewScrollView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
+        equalSplit.isActive = previewMode == .split
+
+        let column = NSStackView(views: [header, separatorTop, body, separatorBottom, footer])
         column.orientation = .vertical
         column.spacing = 0
         column.translatesAutoresizingMaskIntoConstraints = false
@@ -161,8 +227,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
             column.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             header.widthAnchor.constraint(equalTo: column.widthAnchor),
             toolbar.widthAnchor.constraint(equalTo: header.widthAnchor, constant: -20),
-            scrollView.widthAnchor.constraint(equalTo: column.widthAnchor),
-            previewScrollView.widthAnchor.constraint(equalTo: column.widthAnchor),
+            body.widthAnchor.constraint(equalTo: column.widthAnchor),
             footer.widthAnchor.constraint(equalTo: column.widthAnchor),
         ])
 
@@ -176,6 +241,26 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         updateHeader()
         updateStats()
         installEscapeMonitor()
+        installScrollSync()
+        installPreviewResizing()
+        // A web image the preview asked for has arrived.
+        NotificationCenter.default.addObserver(forName: ImageLoader.didLoad, object: nil, queue: .main) { [weak self] _ in
+            if let self, self.previewMode != .off { self.renderPreview() }
+        }
+    }
+
+    private var lineNumbers: LineNumberRuler?
+
+    /// Line numbers beside the editor, remembered across launches.
+    private var showingLineNumbers = UserDefaults.standard.bool(forKey: Keys.lineNumbers) {
+        didSet {
+            UserDefaults.standard.set(showingLineNumbers, forKey: Keys.lineNumbers)
+            scrollView.rulersVisible = showingLineNumbers
+        }
+    }
+
+    @objc func toggleLineNumbers(_ sender: Any?) {
+        showingLineNumbers.toggle()
     }
 
     private func configureTextView() {
@@ -199,15 +284,30 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
         tv.isContinuousSpellCheckingEnabled = false
+
+        // The ruler finds lines through the layout manager, which switches the text view to
+        // TextKit 1. Switch now rather than in the middle of the ruler's first drawing, which
+        // leaves the text undrawn.
+        _ = tv.layoutManager
+        let ruler = LineNumberRuler(textView: tv)
+        scrollView.verticalRulerView = ruler
+        scrollView.hasVerticalRuler = true
+        scrollView.rulersVisible = showingLineNumbers
+        lineNumbers = ruler
+        // Scrolling moves the lines past the numbers.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView,
+                                               queue: .main) { [weak ruler] _ in ruler?.needsDisplay = true }
     }
 
     private func configurePreview() {
-        previewScrollView.isHidden = true
+        previewScrollView.isHidden = previewMode == .off
         previewScrollView.drawsBackground = true
         previewScrollView.backgroundColor = .textBackgroundColor
         previewScrollView.hasVerticalScroller = true
         previewScrollView.borderType = .noBorder
         let pv = previewView
+        pv.textContainer?.replaceLayoutManager(PreviewLayoutManager())   // draws inline code shading
         pv.delegate = self   // for Esc, like the editor
         pv.isEditable = false
         pv.isSelectable = true
@@ -219,41 +319,141 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         pv.linkTextAttributes = [.cursor: NSCursor.pointingHand]
     }
 
+    /// The width the preview's text is laid out in, which table columns are sized to.
+    private var previewTextWidth: CGFloat {
+        previewView.bounds.width - previewView.textContainerInset.width * 2
+            - (previewView.textContainer?.lineFragmentPadding ?? 0) * 2
+    }
+    private var renderedWidth: CGFloat = 0
+
+    /// Tables are sized for the width they were rendered at, so render again when it changes:
+    /// the popover resized, or the preview switched between full and split.
+    private func installPreviewResizing() {
+        previewView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: previewView,
+                                               queue: .main) { [weak self] _ in
+            guard let self, self.previewMode != .off, self.previewTextWidth != self.renderedWidth else { return }
+            self.renderPreview()
+        }
+    }
+
     private func renderPreview() {
         // Keep the scroll position, so ticking a checkbox halfway down doesn't jump to the top.
         let origin = previewScrollView.contentView.bounds.origin
+        // Replacing the text and restoring the position scroll the preview while its height is
+        // still settling; don't let that drag the editor along. The editor leads, below.
+        syncingScroll = true
+        defer {
+            syncingScroll = false
+            // Beside the editor, the preview's height changes as text is typed; keep it lined up.
+            if previewMode == .split { syncScroll(from: scrollView, to: previewScrollView) }
+        }
+        renderedWidth = previewTextWidth
         previewView.textStorage?.setAttributedString(MarkdownRenderer.render(
-            textView.string, fontSize: fontSize, baseURL: fileURL?.deletingLastPathComponent()))
+            textView.string, fontSize: fontSize, baseURL: fileURL?.deletingLastPathComponent(),
+            // Not laid out yet: no width to size tables to. The resize afterwards renders again.
+            width: renderedWidth > 0 ? renderedWidth : nil, expandedSpoilers: expandedSpoilers))
         previewView.layoutManager?.ensureLayout(for: previewView.textContainer!)
         previewScrollView.contentView.scroll(to: origin)
         previewScrollView.reflectScrolledClipView(previewScrollView.contentView)
     }
 
-    /// A checkbox in the preview flips its "[ ]" / "[x]" in the source, as an ordinary undoable edit.
+    // MARK: - Scroll sync
+
+    /// In the split view, scrolling either side scrolls the other to the same relative position.
+    private func installScrollSync() {
+        for (source, target) in [(scrollView, previewScrollView), (previewScrollView, scrollView)] {
+            source.contentView.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+                                                   object: source.contentView, queue: .main) { [weak self] _ in
+                guard let self, self.previewMode == .split else { return }
+                self.syncScroll(from: source, to: target)
+            }
+        }
+    }
+
+    /// Proportional rather than line by line: the rendered blocks don't map back to source lines,
+    /// and for notes the two sides stay close enough.
+    private func syncScroll(from source: NSScrollView, to target: NSScrollView) {
+        guard !syncingScroll, let sourceDoc = source.documentView, let targetDoc = target.documentView else { return }
+        syncingScroll = true
+        defer { syncingScroll = false }
+        let sourceRange = sourceDoc.frame.height - source.contentView.bounds.height
+        let targetRange = targetDoc.frame.height - target.contentView.bounds.height
+        let fraction = sourceRange > 0 ? min(1, max(0, source.contentView.bounds.origin.y / sourceRange)) : 0
+        // Keep x: beside line numbers the editor's origin sits left of zero.
+        target.contentView.scroll(to: NSPoint(x: target.contentView.bounds.origin.x, y: max(0, targetRange) * fraction))
+        target.reflectScrolledClipView(target.contentView)
+    }
+
+    /// Links in the preview that act on the preview itself rather than open in a browser.
     func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-        guard textView === previewView, let url = link as? URL, url.scheme == MarkdownRenderer.taskScheme,
-              let index = url.host.flatMap({ Int($0) }) else { return false }
-        let markers = MarkdownRenderer.taskMarkerRanges(in: self.textView.string)
-        guard markers.indices.contains(index) else { return true }
-        let range = markers[index]
-        let mark = (self.textView.string as NSString).substring(with: range) == " " ? "x" : " "
-        if self.textView.shouldChangeText(in: range, replacementString: mark) {
-            self.textView.textStorage?.replaceCharacters(in: range, with: mark)
-            self.textView.didChangeText()
+        guard textView === previewView, let url = link as? URL, let host = url.host else { return false }
+        switch url.scheme {
+        case MarkdownRenderer.taskScheme:
+            if let index = Int(host) { toggleTask(index) }
+        case HackMD.spoilerScheme:
+            if let index = Int(host) {
+                expandedSpoilers.formSymmetricDifference([index])
+                renderPreview()
+            }
+        case HackMD.anchorScheme:
+            scrollPreview(toAnchor: host)
+        default:
+            return false
         }
         return true
     }
 
-    /// Shown only for Markdown files; tinted while the preview is up.
+    /// A checkbox in the preview flips its "[ ]" / "[x]" in the source, as an ordinary undoable edit.
+    private func toggleTask(_ index: Int) {
+        let markers = MarkdownRenderer.taskMarkerRanges(in: textView.string)
+        guard markers.indices.contains(index) else { return }
+        let range = markers[index]
+        let mark = (textView.string as NSString).substring(with: range) == " " ? "x" : " "
+        if textView.shouldChangeText(in: range, replacementString: mark) {
+            textView.textStorage?.replaceCharacters(in: range, with: mark)
+            textView.didChangeText()
+        }
+    }
+
+    /// The spoilers opened in this document, by their order in it.
+    private var expandedSpoilers = Set<Int>()
+
+    /// Brings a heading ([TOC]) or footnote to the top of the preview.
+    private func scrollPreview(toAnchor anchor: String) {
+        guard let storage = previewView.textStorage, let layout = previewView.layoutManager,
+              let container = previewView.textContainer else { return }
+        var target: Int?
+        storage.enumerateAttribute(HackMD.anchor, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+            if value as? String == anchor {
+                target = range.location
+                stop.pointee = true
+            }
+        }
+        guard let target else { return }
+        let glyphs = layout.glyphRange(forCharacterRange: NSRange(location: target, length: 1), actualCharacterRange: nil)
+        let rect = layout.boundingRect(forGlyphRange: glyphs, in: container)
+        let clip = previewScrollView.contentView
+        let bottom = max(0, previewView.frame.height - clip.bounds.height)
+        clip.scroll(to: NSPoint(x: clip.bounds.origin.x,
+                                y: min(bottom, max(0, rect.minY + previewView.textContainerOrigin.y - 8))))
+        previewScrollView.reflectScrolledClipView(clip)
+    }
+
+    /// Tints the button of the preview mode that's showing.
     private func updateMarkdownButton() {
-        // May run before the view loads (a file opened from Finder), when there's no button yet.
-        markdownButton?.isHidden = !isMarkdown
-        markdownButton?.contentTintColor = showingPreview ? .controlAccentColor : .secondaryLabelColor
+        // May run before the view loads (a file opened from Finder), when there are no buttons yet.
+        markdownButton?.contentTintColor = previewMode == .full ? .controlAccentColor : .secondaryLabelColor
+        splitButton?.contentTintColor = previewMode == .split ? .controlAccentColor : .secondaryLabelColor
     }
 
     @objc func toggleMarkdownPreview(_ sender: Any?) {
-        guard isMarkdown else { return }
-        showingPreview.toggle()
+        previewMode = previewMode == .full ? .off : .full
+    }
+
+    @objc func toggleSplitPreview(_ sender: Any?) {
+        previewMode = previewMode == .split ? .off : .split
     }
 
     private func toolButton(_ symbol: String, _ zh: String, _ en: String, _ action: Selector) -> NSButton {
@@ -280,7 +480,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
     }
 
     func focusText() {
-        view.window?.makeFirstResponder(showingPreview ? previewView : textView)
+        view.window?.makeFirstResponder(previewMode == .full ? previewView : textView)
     }
 
     // MARK: - Size
@@ -340,11 +540,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         }
     }
 
+    /// The current line's number is drawn stronger.
+    func textViewDidChangeSelection(_ notification: Notification) {
+        if notification.object as AnyObject === textView { lineNumbers?.needsDisplay = true }
+    }
+
     func textDidChange(_ notification: Notification) {
+        lineNumbers?.updateThickness()
         isDirty = true
         updateStats()
-        // Checkbox clicks, and undoing them, change the source while the preview is up.
-        if showingPreview { renderPreview() }
+        // Typing beside the split preview, and checkbox clicks in either preview, change the source.
+        if previewMode != .off { renderPreview() }
     }
 
     private func setText(_ text: String, url: URL?, encoding: String.Encoding = .utf8) {
@@ -357,7 +563,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         fileURL = url
         isDirty = false
         updateStats()
-        showingPreview = isMarkdown && UserDefaults.standard.bool(forKey: Keys.markdownPreview)
+        lineNumbers?.updateThickness()
+        expandedSpoilers = []
+        previewMode = isMarkdown ? savedPreviewMode : .off
         focusText()
     }
 
@@ -484,8 +692,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         do {
             try TextFile.write(textView.string, to: url, encoding: encoding)
             fileURL = url
-            if !isMarkdown && showingPreview { showingPreview = false }
-            updateMarkdownButton()
             fileEncoding = encoding
             encodingChosen = true
             isDirty = false
@@ -573,6 +779,47 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         stepBack()
     }
 
+    // MARK: - Email
+
+    /// Opens a new message in the default mail app, with the text as its body.
+    @objc func emailDocument(_ sender: Any?) {
+        guard !textView.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            NSSound.beep()
+            return
+        }
+        guard let url = Self.mailURL(subject: emailSubject, body: textView.string),
+              NSWorkspace.shared.urlForApplication(toOpen: url) != nil else {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = tr("找不到郵件軟體", "No mail app found")
+            alert.informativeText = tr("請在「郵件」App 的設定裡選擇預設的郵件軟體。",
+                                       "Choose a default email app in the Mail app’s settings.")
+            keepingPopoverOpen { _ = alert.runModal() }
+            return
+        }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// A mailto: URL as RFC 6068 has it: line breaks as CR LF, and everything but unreserved
+    /// characters percent-encoded, so "&" or "?" in the text can't end the body early.
+    static func mailURL(subject: String, body: String) -> URL? {
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        func encode(_ text: String) -> String {
+            text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\n", with: "\r\n")
+                .addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+        }
+        return URL(string: "mailto:?subject=\(encode(subject))&body=\(encode(body))")
+    }
+
+    /// The file's name, or for an unsaved note its first line without Markdown heading marks.
+    private var emailSubject: String {
+        if let fileURL { return fileURL.deletingPathExtension().lastPathComponent }
+        let first = textView.string.split(whereSeparator: \.isNewline)
+            .lazy.map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "# ").union(.whitespaces)) }
+            .first { !$0.isEmpty } ?? ""
+        return first.isEmpty ? tr("隨手記", "MenuNote") : String(first.prefix(60))
+    }
+
     // MARK: - Print
 
     @objc func printDocument(_ sender: Any?) {
@@ -605,6 +852,42 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
 
     // MARK: - More menu
 
+    // MARK: - Emoji
+
+    @objc func showEmojiMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        EmojiMenu.items(target: self, action: #selector(insertEmoji(_:)), palette: #selector(showEmojiPalette(_:)))
+            .forEach(menu.addItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// Right-clicking the text offers the emoji too.
+    func textView(_ view: NSTextView, menu: NSMenu, for event: NSEvent, at charIndex: Int) -> NSMenu? {
+        guard view === textView else { return menu }
+        let submenu = NSMenu()
+        EmojiMenu.items(target: self, action: #selector(insertEmoji(_:)), palette: #selector(showEmojiPalette(_:)))
+            .forEach(submenu.addItem)
+        let item = NSMenuItem(title: tr("插入 Emoji", "Insert Emoji"), action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        menu.insertItem(item, at: 0)
+        menu.insertItem(.separator(), at: 1)
+        return menu
+    }
+
+    /// Inserts at the insertion point, replacing any selection, as one undoable edit.
+    @objc func insertEmoji(_ sender: NSMenuItem) {
+        guard let choice = sender.representedObject as? EmojiMenu.Choice else { return }
+        EmojiMenu.used(choice.name)
+        textView.insertText(choice.text, replacementRange: textView.selectedRange())
+        if previewMode != .full { view.window?.makeFirstResponder(textView) }
+    }
+
+    /// The system's picker, for emoji beyond the menu's.
+    @objc func showEmojiPalette(_ sender: Any?) {
+        view.window?.makeFirstResponder(textView)
+        NSApp.orderFrontCharacterPalette(sender)
+    }
+
     @objc func showMoreMenu(_ sender: NSButton) {
         let menu = NSMenu()
         // Listed with their shortcuts so ⌘N / ⌘O / ⌘S are discoverable; the main menu handles the keys.
@@ -612,15 +895,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         add(menu, tr("開啟…", "Open…"), #selector(openDocument(_:)), key: "o")
         add(menu, tr("儲存", "Save"), #selector(saveDocument(_:)), key: "s")
         add(menu, tr("另存新檔…", "Save As…"), #selector(saveDocumentAs(_:)), key: "S")
+        add(menu, tr("以郵件寄出…", "Email…"), #selector(emailDocument(_:)), key: "E")
         menu.addItem(.separator())
         add(menu, tr("放大字體", "Larger Font"), #selector(biggerFont(_:)))
         add(menu, tr("縮小字體", "Smaller Font"), #selector(smallerFont(_:)))
         add(menu, tr("預設字體大小", "Default Font Size"), #selector(resetFont(_:)))
         add(menu, tr("恢復預設視窗大小", "Restore Default Window Size"), #selector(resetSize(_:)))
-        if isMarkdown {
-            add(menu, tr("Markdown 預覽", "Markdown Preview"), #selector(toggleMarkdownPreview(_:)), key: "M")
-                .state = showingPreview ? .on : .off
-        }
+        let numbers = add(menu, tr("顯示行號", "Show Line Numbers"), #selector(toggleLineNumbers(_:)), key: "l")
+        numbers.keyEquivalentModifierMask = [.command, .option]
+        numbers.state = showingLineNumbers ? .on : .off
+        menu.addItem(.separator())
+        add(menu, tr("整頁 Markdown 預覽", "Full Markdown Preview"), #selector(toggleMarkdownPreview(_:)), key: "M")
+            .state = previewMode == .full ? .on : .off
+        let split = add(menu, tr("左右分割 Markdown 預覽", "Side-by-Side Markdown Preview"), #selector(toggleSplitPreview(_:)), key: "M")
+        split.keyEquivalentModifierMask = [.command, .option, .shift]
+        split.state = previewMode == .split ? .on : .off
         menu.addItem(.separator())
         let themeMenu = NSMenu()
         for theme in Theme.allCases {
@@ -702,12 +991,5 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         } catch {
             showError(tr("無法變更「登入時自動開啟」", "Couldn’t change “Open at Login”"), error)
         }
-    }
-}
-
-extension EditorViewController: NSMenuItemValidation {
-    /// Greys out the Markdown preview shortcut for files that aren't Markdown.
-    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action != #selector(toggleMarkdownPreview(_:)) || isMarkdown
     }
 }
