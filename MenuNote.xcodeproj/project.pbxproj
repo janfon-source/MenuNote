@@ -236,7 +236,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026.1;
+				CURRENT_PROJECT_VERSION = 2026.a20;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -253,7 +253,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2026.1;
+				MARKETING_VERSION = 2026.a20;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jeff.menunote;
 				PRODUCT_NAME = "隨手記";
 				PRODUCT_MODULE_NAME = MenuNote;
@@ -268,7 +268,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026.1;
+				CURRENT_PROJECT_VERSION = 2026.a20;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -285,7 +285,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 2026.1;
+				MARKETING_VERSION = 2026.a20;
 				PRODUCT_BUNDLE_IDENTIFIER = com.jeff.menunote;
 				PRODUCT_NAME = "隨手記";
 				PRODUCT_MODULE_NAME = MenuNote;
