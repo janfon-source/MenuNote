@@ -10,6 +10,17 @@ enum TextFile {
     static let gb18030 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
         CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
 
+    /// Whether a file the system can't type (no extension, or one it doesn't know) holds text:
+    /// its first 8 KB has no NUL bytes, which binary files nearly always do and text never does,
+    /// except UTF-16, which is told by its byte-order mark.
+    static func looksLikeText(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 8192) else { return true }   // empty
+        if head.starts(with: [0xFF, 0xFE]) || head.starts(with: [0xFE, 0xFF]) { return true }
+        return !head.contains(0)
+    }
+
     /// Reads a text file, trying UTF-8 first, then any BOM-marked encoding, then Big5 or GB18030.
     /// Returns the encoding it was read with, so saving can keep it.
     static func read(_ url: URL) throws -> (text: String, encoding: String.Encoding) {

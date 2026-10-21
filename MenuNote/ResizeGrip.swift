@@ -44,15 +44,17 @@ final class ResizeGrip: NSView {
         }
     }
 
+    private var resizeCursor: NSCursor {
+        if #available(macOS 15.0, *) { return .frameResize(position: .bottomRight, directions: .all) }
+        return .crosshair
+    }
+
     override func resetCursorRects() {
-        if #available(macOS 15.0, *) {
-            addCursorRect(bounds, cursor: .frameResize(position: .bottomRight, directions: .all))
-        } else {
-            addCursorRect(bounds, cursor: .crosshair)
-        }
+        addCursorRect(bounds, cursor: resizeCursor)
     }
 
     override func mouseDown(with event: NSEvent) {
+        resizeCursor.set()
         if event.clickCount == 2 {
             start = nil
             onReset?()
@@ -64,6 +66,7 @@ final class ResizeGrip: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let start else { return }
+        resizeCursor.set()   // the window moving under the pointer would otherwise reset it
         let p = screenPoint(event)
         onDrag?(CGSize(width: p.x - start.x, height: start.y - p.y))
     }

@@ -73,6 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         editor.focusText()
+        editor.checkFileOnDisk()   // it may have changed while the window was closed
     }
 
     /// Right-click menu on the status item.

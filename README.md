@@ -11,6 +11,7 @@ A lightweight plain-text notepad that lives in the macOS menu bar. [English belo
 - **以郵件寄出**（⇧⌘E 或「更多」選單）：在預設的郵件軟體開一封新郵件，內文是編輯中的文字，主旨是檔名或第一行。
 - **插入 Emoji**：工具列的笑臉按鈕或右鍵選單，依分類列出常用的 GitHub emoji，插入 `:smile:` 這樣的代碼（按住 ⌥ 則插入 emoji 本身），最近用過的排在最前面。
 - **行號**：在編輯區左側顯示行號（⌥⌘L 或「更多」選單開關），自動換行的續行不另外編號，設定會記住。
+- **自動更新**：開著的檔案在其他 App 被修改時，自動載入新內容；隨手記裡也有未儲存的修改時，會先問要保留哪一邊。
 - **自動判斷編碼**：讀得懂 UTF-8、UTF-16、Big5、GB2312 / GBK / GB18030。非 UTF-8 的檔案存檔時，可以選擇保留原編碼或改存 UTF-8。
 - **Markdown 預覽**：整頁預覽或左右分割、邊打字邊看，程式碼區塊會語法上色，詳見[下方說明](#markdown-預覽)。
 - **繁體中文 / English 介面**：在「更多」選單切換，立即生效。
@@ -37,7 +38,7 @@ A lightweight plain-text notepad that lives in the macOS menu bar. [English belo
 - **HTML 標籤**：支援大部分常用標籤，例如 `<b>`、`<span style="color: red">`、`<kbd>`、`<br>`、`<div align="center">`、`<details>`、`<table>`（含 `colspan`、`rowspan` 合併儲存格）、`<img>`；不認得的標籤照原樣顯示。
 - **定義清單**：名詞下一行以 `: ` 或 `~ ` 開頭就是它的解釋（PHP Markdown Extra / Pandoc 的寫法），名詞顯示成粗體、解釋縮排在下方。
 - **分隔線**：`---` 畫成整欄寬的細線。
-- **記住模式**：`.md` 檔會用上次在 `.md` 檔用的預覽模式開啟，其他檔案一律從編輯模式開始。
+- **記住模式**：`.md` 檔會用上次在 `.md` 檔用的預覽模式開啟，其他檔案一律從編輯模式開始。整頁預覽時直接打字，就會回到編輯區繼續輸入。
 
 ### HackMD 語法
 
@@ -132,6 +133,7 @@ cd MenuNote
 - **Email** (⇧⌘E or the More menu): opens a new message in the default mail app with the text as its body, and the file name or first line as the subject.
 - **Insert emoji** from the smiley toolbar button or the right-click menu: common GitHub emoji by category, inserted as shortcodes such as `:smile:` (hold ⌥ for the emoji itself), with recent ones first.
 - **Line numbers** beside the editor, toggled with ⌥⌘L or from the More menu. A wrapped line keeps a single number. The setting is remembered.
+- **Live updates**: when another app changes the open file, the new text loads automatically; if there are unsaved changes here too, you're asked which to keep.
 - **Encoding detection**: reads UTF-8, UTF-16, Big5 and GB2312 / GBK / GB18030. When saving a file that wasn't UTF-8, you choose whether to keep its encoding or convert to UTF-8.
 - **Markdown preview**: full-window or side by side as you type, with syntax-colored code blocks. See [below](#markdown-preview).
 - **Traditional Chinese / English UI**, switchable live from the More menu.
@@ -158,7 +160,7 @@ Press the same shortcut or button again to close the preview. Both modes are als
 - **HTML tags**: most common tags work, such as `<b>`, `<span style="color: red">`, `<kbd>`, `<br>`, `<div align="center">`, `<details>`, `<table>` (with `colspan` and `rowspan`) and `<img>`. Unknown tags show as typed.
 - **Definition lists**: a line starting with `: ` or `~ ` under a term is its definition (PHP Markdown Extra / Pandoc syntax). Terms show in bold with definitions indented below.
 - **Horizontal rules**: `---` draws a thin line across the full width.
-- **Remembered mode**: `.md` files open in the preview mode last used on a `.md` file. Other files always open in the editor.
+- **Remembered mode**: `.md` files open in the preview mode last used on a `.md` file. Other files always open in the editor. Start typing in the full preview to go back to the editor.
 
 #### HackMD syntax
 

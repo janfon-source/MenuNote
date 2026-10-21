@@ -3,7 +3,7 @@ import ServiceManagement
 import UniformTypeIdentifiers
 
 /// The popover's content: a toolbar, a plain-text editor, and a status line.
-final class EditorViewController: NSViewController, NSTextViewDelegate,
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSavePanelDelegate,
                                   NSSharingServicePickerDelegate, NSSharingServiceDelegate {
     weak var popover: NSPopover?
 
@@ -65,6 +65,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
     private let titleLabel = NSTextField(labelWithString: "")
     private let statsLabel = NSTextField(labelWithString: "")
     private var escapeMonitor: Any?
+    private var typingMonitor: Any?
     /// Toolbar buttons with their Chinese and English tooltips, relabeled when the language changes.
     private var localizedToolTips: [(view: NSView, zh: String, en: String)] = []
     private var shareButton: NSButton!
@@ -498,6 +499,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         preferredContentSize = size
         popover?.contentSize = size
         savedSize = size
+        // Have the views beside the edges, the grip among them, track their new places.
+        view.window?.invalidateCursorRects(for: view)
     }
 
     @objc func resetSize(_ sender: Any?) {
@@ -538,6 +541,31 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
             self.closePopover(nil)
             return nil
         }
+        typingMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            self?.leavePreviewForTyping(event)
+            return event
+        }
+    }
+
+    /// Typing while the full preview hides the editor goes back to the editor, and the key is
+    /// typed there: someone who opens a note and starts typing wants to edit it. Arrows, page
+    /// keys and shortcuts still act on the preview.
+    private func leavePreviewForTyping(_ event: NSEvent) {
+        guard previewMode == .full, let window = view.window, event.window === window,
+              window.firstResponder === previewView,
+              event.modifierFlags.intersection([.command, .control]).isEmpty,
+              ![53, 48].contains(event.keyCode),   // Esc hides the window; Tab moves focus
+              let scalar = event.characters?.unicodeScalars.first,
+              !(0xF700...0xF8FF).contains(scalar.value)   // arrows, page and function keys
+        else { return }
+        previewMode = .off   // puts the editor back in front, so the key reaches it
+        // The insertion point couldn't be seen; if it's still where opening put it, at the very
+        // start, type at the end instead, as when adding to a note.
+        if textView.selectedRange() == NSRange(location: 0, length: 0) {
+            let end = (textView.string as NSString).length
+            textView.setSelectedRange(NSRange(location: end, length: 0))
+            textView.scrollRangeToVisible(NSRange(location: end, length: 0))
+        }
     }
 
     /// The current line's number is drawn stronger.
@@ -564,6 +592,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         isDirty = false
         updateStats()
         lineNumbers?.updateThickness()
+        knownModification = url.flatMap(modificationDate)
+        watchFile()
         expandedSpoilers = []
         previewMode = isMarkdown ? savedPreviewMode : .off
         focusText()
@@ -646,17 +676,127 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
     @objc func openDocument(_ sender: Any?) {
         guard confirmDiscardChanges() else { return }
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
+        panel.delegate = self   // decides which files can be chosen; see panel(_:shouldEnable:)
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard keepingPopoverOpen({ panel.runModal() }) == .OK, let url = panel.url else { return }
         load(url)
     }
 
+    /// Text files can be chosen: plain text, other text such as JSON, HTML or XML (but not RTF,
+    /// whose formatting codes would show), and ones the system can't type, such as README or
+    /// .zshrc with no extension, which allowing only plain-text types would leave greyed out.
+    func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey, .contentTypeKey])
+        if values?.isDirectory == true { return values?.isPackage != true }   // folders to look in, not apps
+        guard let type = values?.contentType else { return TextFile.looksLikeText(url) }
+        if type.conforms(to: .text) { return !type.conforms(to: .rtf) }
+        return (url.pathExtension.isEmpty || type.isDynamic) && TextFile.looksLikeText(url)
+    }
+
     /// Opens a file handed over by Finder, asking about unsaved changes first.
     func open(_ url: URL) {
         guard url != fileURL || isDirty, confirmDiscardChanges() else { return }
         load(url)
+    }
+
+    // MARK: - Changes made elsewhere
+
+    /// Watches the open file, so a change made in another app shows here.
+    private var fileWatcher: DispatchSourceFileSystemObject?
+    /// When the file was last read or saved here; a later date means someone else changed it.
+    private var knownModification: Date?
+    /// Both the file and the text here changed while the window was closed: ask when it opens.
+    private var externalChangePending = false
+    private var askingAboutExternalChange = false
+
+    private func modificationDate(_ url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+    }
+
+    private func watchFile() {
+        fileWatcher?.cancel()
+        fileWatcher = nil
+        guard let url = fileURL else { return }
+        let descriptor = Darwin.open(url.path, O_EVTONLY)
+        guard descriptor >= 0 else { return }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor, eventMask: [.write, .extend, .delete, .rename], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let source else { return }
+            if !source.data.isDisjoint(with: [.delete, .rename]) {
+                // Most apps save by putting a new file in place of the old one, which is what this
+                // watcher was following. Give the new one a moment to arrive, then follow it instead.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    self.watchFile()
+                    self.checkFileOnDisk()
+                }
+            } else {
+                self.checkFileOnDisk()
+            }
+        }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        fileWatcher = source
+    }
+
+    /// Takes in a change made to the file elsewhere: reloads it if there's nothing unsaved here,
+    /// and otherwise asks which version to keep. Also called when the window opens.
+    func checkFileOnDisk() {
+        guard let url = fileURL, !askingAboutExternalChange else { return }
+        guard let modified = modificationDate(url) else {
+            isDirty = true   // gone: what's here now exists only here
+            return
+        }
+        guard modified != knownModification || externalChangePending,
+              let file = try? TextFile.read(url) else { return }
+        if file.text == textView.string {
+            knownModification = modified
+            externalChangePending = false
+            return
+        }
+        if !isDirty {
+            reload(file, modified: modified)
+            return
+        }
+        guard popover?.isShown == true else {
+            externalChangePending = true
+            return
+        }
+        askingAboutExternalChange = true
+        defer { askingAboutExternalChange = false }
+        let alert = NSAlert()
+        alert.messageText = tr("「\(displayName)」已在其他地方修改", "“\(displayName)” was changed elsewhere")
+        alert.informativeText = tr("你在這裡也有尚未儲存的修改。要載入檔案的新版本，還是保留這裡的內容？",
+                                   "You also have unsaved changes here. Load the file’s new version, or keep what’s here?")
+        alert.addButton(withTitle: tr("保留這裡的內容", "Keep What’s Here"))
+        alert.addButton(withTitle: tr("載入新版本", "Load New Version"))
+        let keep = keepingPopoverOpen({ alert.runModal() }) == .alertFirstButtonReturn
+        externalChangePending = false
+        if keep {
+            knownModification = modified   // ask again only if it changes again
+        } else if let latest = try? TextFile.read(url) {
+            reload(latest, modified: modificationDate(url) ?? modified)
+        }
+    }
+
+    /// Shows the file's new text, keeping the selection and scroll position as near as they'll go.
+    private func reload(_ file: (text: String, encoding: String.Encoding), modified: Date) {
+        let selection = textView.selectedRange()
+        let origin = scrollView.contentView.bounds.origin
+        textView.string = file.text
+        let length = (file.text as NSString).length
+        textView.setSelectedRange(NSRange(location: min(selection.location, length), length: 0))
+        textView.undoManager?.removeAllActions()
+        scrollView.contentView.scroll(to: origin)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        fileEncoding = file.encoding
+        knownModification = modified
+        externalChangePending = false
+        isDirty = false
+        updateStats()
+        lineNumbers?.updateThickness()
+        if previewMode != .off { renderPreview() }
     }
 
     private func load(_ url: URL) {
@@ -691,7 +831,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate,
         guard let url = target, let encoding = chooseSaveEncoding() else { return false }
         do {
             try TextFile.write(textView.string, to: url, encoding: encoding)
+            // Our own save changes the file too; remember it, so it doesn't count as someone else's.
+            knownModification = modificationDate(url)
+            let moved = url != fileURL
             fileURL = url
+            if moved { watchFile() }
             fileEncoding = encoding
             encodingChosen = true
             isDirty = false

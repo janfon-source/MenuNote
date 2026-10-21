@@ -926,6 +926,19 @@ enum MarkdownRenderer {
                     let scale: [CGFloat] = [1.6, 1.4, 1.2, 1.1, 1.0, 1.0]
                     font = .boldSystemFont(ofSize: fontSize * scale[min(max(level, 1), 6) - 1])
                     paragraph.paragraphSpacingBefore = fontSize * 0.6
+                    if level <= 2 {
+                        // A line 10pt under first- and second-level headings, as on GitHub. The space
+                        // after the heading moves below the line, so the line stays close to the text;
+                        // a box equal only to itself keeps two headings in a row from sharing one.
+                        let underline = CodeBox()
+                        underline.setValue(100, type: .percentageValueType, for: .width)
+                        underline.setWidth(10, type: .absoluteValueType, for: .padding, edge: .maxY)
+                        underline.setWidth(1, type: .absoluteValueType, for: .border, edge: .maxY)
+                        underline.setBorderColor(.tertiaryLabelColor, for: .maxY)
+                        underline.setWidth(paragraph.paragraphSpacing, type: .absoluteValueType, for: .margin, edge: .maxY)
+                        paragraph.paragraphSpacing = 0
+                        paragraph.textBlocks = [underline]
+                    }
                 case .codeBlock(let languageHint):
                     if let hint = languageHint, let equals = hint.firstIndex(of: "=") {
                         language = String(hint[..<equals])
