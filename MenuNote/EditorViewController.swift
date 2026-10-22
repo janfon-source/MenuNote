@@ -6,6 +6,13 @@ import UniformTypeIdentifiers
 final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSavePanelDelegate,
                                   NSSharingServicePickerDelegate, NSSharingServiceDelegate {
     weak var popover: NSPopover?
+    /// The window the editor moves to while pinned, which can be dragged anywhere.
+    weak var pinnedWindow: NSWindow?
+    /// Called when the pin is switched on or off, to move the editor between popover and window.
+    var onPinChange: ((Bool) -> Void)?
+    private var inPinnedWindow: Bool { pinnedWindow != nil && view.window === pinnedWindow }
+    /// On screen, in the popover or the pinned window.
+    var isShowing: Bool { inPinnedWindow ? view.window?.isVisible == true : popover?.isShown == true }
 
     private(set) var fileURL: URL?
     private(set) var isDirty = false {
@@ -19,11 +26,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     /// Whether the user already chose how to save a non-UTF-8 file, so we ask only once.
     private var encodingChosen = true
 
-    /// Pinned keeps the popover open while the user clicks in other apps.
-    private var pinned = UserDefaults.standard.bool(forKey: Keys.pinned) {
+    /// Pinned moves the editor into a window of its own, which stays open while the user clicks in
+    /// other apps and can be dragged anywhere.
+    private(set) var pinned = UserDefaults.standard.bool(forKey: Keys.pinned) {
         didSet {
             UserDefaults.standard.set(pinned, forKey: Keys.pinned)
             applyPopoverBehavior()
+            onPinChange?(pinned)
         }
     }
 
@@ -150,7 +159,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         shareButton = toolButton("square.and.arrow.up", "分享到備忘錄、訊息或其他 App", "Share to Notes, Messages or other apps", #selector(share(_:)))
-        pinButton = toolButton("pin", "釘選：點其他地方時不關閉視窗（按 Esc 仍可隱藏）", "Pin: keep the window open when clicking elsewhere (Esc still hides it)", #selector(togglePin(_:)))
+        pinButton = toolButton("pin", "釘選：視窗固定顯示，可拖曳上緣或空白處移動、拖曳邊緣調整大小（按 Esc 仍可隱藏）；解除後回到選單列下方原本的大小",
+                               "Pin: keep the window open, drag it anywhere by its top edge and resize it by its edges (Esc still hides it); unpinning puts it back under the menu bar at its earlier size",
+                               #selector(togglePin(_:)))
 
         markdownButton = toolButton("doc.richtext", "整頁 Markdown 預覽（⇧⌘M）", "Full Markdown Preview (⇧⌘M)", #selector(toggleMarkdownPreview(_:)))
         splitButton = toolButton("rectangle.split.2x1", "編輯區旁顯示 Markdown 預覽（⌥⇧⌘M）", "Markdown Preview Beside the Text (⌥⇧⌘M)", #selector(toggleSplitPreview(_:)))
@@ -187,9 +198,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         grip.onBegin = { [weak self] in self?.sizeAtDragStart = self?.view.frame.size ?? .zero }
         grip.onDrag = { [weak self] delta in
             guard let self else { return }
+            // The pinned window keeps its left edge, so there the corner follows the pointer as it is.
+            let factor: CGFloat = self.inPinnedWindow ? 1 : 2
             // The popover stays centered under the menu bar icon, so its right edge moves
             // half as far as the width changes; doubling keeps the corner under the pointer.
-            self.resize(to: NSSize(width: self.sizeAtDragStart.width + delta.width * 2,
+            self.resize(to: NSSize(width: self.sizeAtDragStart.width + delta.width * factor,
                                    height: self.sizeAtDragStart.height + delta.height))
         }
         grip.onReset = { [weak self] in self?.resetSize(nil) }
@@ -496,6 +509,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
 
     private func resize(to size: NSSize) {
         let size = clamp(size)
+        // The pinned window has a size of its own (saved with its place); the popover's size is
+        // left as it was, for when the pin comes off.
+        if inPinnedWindow, let window = view.window {
+            var frame = window.frame
+            let top = frame.maxY
+            frame.size = window.frameRect(forContentRect: NSRect(origin: .zero, size: size)).size
+            frame.origin.y = top - frame.height
+            preferredContentSize = size
+            window.setFrame(frame, display: true)
+            return
+        }
         preferredContentSize = size
         popover?.contentSize = size
         savedSize = size
@@ -505,6 +529,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
 
     @objc func resetSize(_ sender: Any?) {
         resize(to: Self.defaultSize)
+    }
+
+    /// Back in the popover after being pinned: the size it had before.
+    func restorePopoverSize() {
+        resize(to: savedSize)
     }
 
     // MARK: - State display
@@ -646,7 +675,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         updatePinButton()
     }
 
+    /// Hides the window; a pinned one stays pinned, and comes back where it was.
     @objc func closePopover(_ sender: Any?) {
+        if inPinnedWindow { return view.window!.orderOut(sender) }
         popover?.performClose(sender)
     }
 
@@ -759,7 +790,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
             reload(file, modified: modified)
             return
         }
-        guard popover?.isShown == true else {
+        guard isShowing else {
             externalChangePending = true
             return
         }

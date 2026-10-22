@@ -6,7 +6,8 @@ A lightweight plain-text notepad that lives in the macOS menu bar. [English belo
 
 ## 功能
 
-- **選單列小視窗**：不佔 Dock，可拖曳右下角調整大小，可釘選讓它不自動關閉。
+- **選單列小視窗**：不佔 Dock，可拖曳右下角調整大小。
+- **釘選視窗**：按圖釘後，視窗變成可自由拖曳（拖上緣或空白處）、可拖曳邊緣調整大小的浮動視窗，切換到其他 App 也不會收起，下次顯示仍在原處；再按一次解除釘選，視窗回到選單列圖示下方、釘選前的大小。
 - **純文字檔**：開啟、儲存、另存新檔、列印、分享到備忘錄或訊息。
 - **以郵件寄出**（⇧⌘E 或「更多」選單）：在預設的郵件軟體開一封新郵件，內文是編輯中的文字，主旨是檔名或第一行。
 - **插入 Emoji**：工具列的笑臉按鈕或右鍵選單，依分類列出常用的 GitHub emoji，插入 `:smile:` 這樣的代碼（按住 ⌥ 則插入 emoji 本身），最近用過的排在最前面。
@@ -128,7 +129,8 @@ cd MenuNote
 
 ### Features
 
-- **Menu bar popover**: no Dock icon, resizable from the corner, can be pinned open.
+- **Menu bar popover**: no Dock icon, resizable from the corner.
+- **Pinning**: the pin turns the window into a floating one you can drag anywhere (by its top edge or any empty space) and resize by its edges; it stays up while you use other apps and comes back where you left it. Unpin and it returns under the menu bar icon at the size it had before.
 - **Plain-text files**: open, save, save as, print, and share to Notes or Messages.
 - **Email** (⇧⌘E or the More menu): opens a new message in the default mail app with the text as its body, and the file name or first line as the subject.
 - **Insert emoji** from the smiley toolbar button or the right-click menu: common GitHub emoji by category, inserted as shortcodes such as `:smile:` (hold ⌥ for the emoji itself), with recent ones first.
