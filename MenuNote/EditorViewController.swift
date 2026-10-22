@@ -1122,11 +1122,17 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         NSApp.activate(ignoringOtherApps: true)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        let credits = NSAttributedString(string: "Created by : Jeff Lee", attributes: [
-            .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let credits = NSMutableAttributedString(string: "Created by : Jeff Lee\n", attributes: [
+            .font: font,
             .foregroundColor: NSColor.secondaryLabelColor,
             .paragraphStyle: paragraph,
         ])
+        credits.append(NSAttributedString(string: "github.com/janfon-source/MenuNote", attributes: [
+            .font: font,
+            .link: URL(string: "https://github.com/janfon-source/MenuNote")!,
+            .paragraphStyle: paragraph,
+        ]))
         NSApp.orderFrontStandardAboutPanel(options: [.applicationName: tr("隨手記", "MenuNote"), .credits: credits])
     }
 
