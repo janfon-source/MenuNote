@@ -16,7 +16,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
 
     private(set) var fileURL: URL?
     private(set) var isDirty = false {
-        didSet { updateHeader() }
+        didSet {
+            updateHeader()
+            updateButtons()
+        }
     }
 
     /// The encoding the file was read with, used again when saving if the user keeps it.
@@ -81,6 +84,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     /// Toolbar buttons with their Chinese and English tooltips, relabeled when the language changes.
     private var localizedToolTips: [(view: NSView, zh: String, en: String)] = []
     private var shareButton: NSButton!
+    private var saveButton: NSButton!
+    private var printButton: NSButton!
     private var pinButton: NSButton!
     private var markdownButton: NSButton!
     private var splitButton: NSButton!
@@ -111,6 +116,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     /// Any text can be previewed; the mode is remembered only for Markdown files.
     private var previewMode = PreviewMode.off {
         didSet {
+            updateButtons()
             let top = editorTopCharacter()
             if isMarkdown { UserDefaults.standard.set(previewMode.rawValue, forKey: Keys.previewMode) }
             if previewMode != .off { renderPreview() }
@@ -168,14 +174,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
 
         markdownButton = toolButton("doc.richtext", "整頁 Markdown 預覽（⇧⌘M）", "Full Markdown Preview (⇧⌘M)", #selector(toggleMarkdownPreview(_:)))
         splitButton = toolButton("rectangle.split.2x1", "編輯區旁顯示 Markdown 預覽（⌥⇧⌘M）", "Markdown Preview Beside the Text (⌥⇧⌘M)", #selector(toggleSplitPreview(_:)))
+        saveButton = toolButton("square.and.arrow.down", "儲存（⌘S）", "Save (⌘S)", #selector(saveDocument(_:)))
+        printButton = toolButton("printer", "列印（⌘P）", "Print (⌘P)", #selector(printDocument(_:)))
         let spacer = NSView()
         let toolbar = NSStackView(views: [
             toolButton("doc.badge.plus", "新增（⌘N）", "New (⌘N)", #selector(newDocument(_:))),
             toolButton("folder", "開啟（⌘O）", "Open (⌘O)", #selector(openDocument(_:))),
-            toolButton("square.and.arrow.down", "儲存（⌘S）", "Save (⌘S)", #selector(saveDocument(_:))),
+            saveButton,
             divider(),
             shareButton,
-            toolButton("printer", "列印（⌘P）", "Print (⌘P)", #selector(printDocument(_:))),
+            printButton,
             toolButton("face.smiling", "插入 Emoji", "Insert Emoji", #selector(showEmojiMenu(_:))),
             markdownButton,
             splitButton,
@@ -546,7 +554,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         titleLabel.toolTip = fileURL?.path ?? tr("尚未儲存", "Not saved yet")
     }
 
+    /// Buttons with nothing to act on are off: Save with no changes to save; Share, Print and
+    /// the previews with no text (a preview that's showing can still be closed).
+    private func updateButtons() {
+        guard isViewLoaded else { return }
+        saveButton?.isEnabled = isDirty
+        for button in [shareButton, printButton] { button?.isEnabled = hasText }
+        markdownButton?.isEnabled = hasText || previewMode == .full
+        splitButton?.isEnabled = hasText || previewMode == .split
+    }
+
+    private var hasText: Bool { !textView.string.isEmpty }
+
     private func updateStats() {
+        updateButtons()
         let s = TextFile.stats(textView.string)
         let counts = tr("\(s.characters) 字 · \(s.lines) 行", "\(s.characters) chars · \(s.lines) lines")
         statsLabel.stringValue = "\(counts) · \(TextFile.name(of: fileEncoding))"
@@ -1286,6 +1307,14 @@ extension EditorViewController: NSMenuItemValidation {
             return !Presence.showInDock || Presence.showInMenuBar
         case #selector(toggleShowInMenuBar(_:)):
             return !Presence.showInMenuBar || Presence.showInDock
+        case #selector(saveDocument(_:)):
+            return isDirty
+        case #selector(share(_:)), #selector(printDocument(_:)), #selector(emailDocument(_:)):
+            return hasText
+        case #selector(toggleMarkdownPreview(_:)):
+            return hasText || previewMode == .full
+        case #selector(toggleSplitPreview(_:)):
+            return hasText || previewMode == .split
         default:
             return true
         }
