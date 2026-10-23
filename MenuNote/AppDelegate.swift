@@ -36,8 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: nil)
-            button.image?.isTemplate = true
+            button.image = StatusIcon.image
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -239,5 +238,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard editor.isDirty else { return .terminateNow }
         showPopover()
         return editor.confirmDiscardChanges() ? .terminateNow : .terminateCancel
+    }
+}
+
+/// The menu bar icon: a pen, in the same plain style as 隨手SQLite's feather and 隨手MySQL's
+/// dolphin; a template image, so it takes the menu bar's color.
+enum StatusIcon {
+    static let image: NSImage = {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            NSColor.black.setFill()
+            pen()
+            return true
+        }
+        image.isTemplate = true
+        return image
+    }()
+
+    /// Drawn upright about the middle, then turned to lean to the top right: a rounded body, a
+    /// band below its end, and a pointed tip at the bottom left.
+    private static func pen() {
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let turn = NSAffineTransform()
+        turn.translateX(by: 9, yBy: 9)
+        turn.rotate(byDegrees: -45)
+        turn.concat()
+        let width: CGFloat = 4.4
+        NSBezierPath(roundedRect: NSRect(x: -width / 2, y: -4.2, width: width, height: 14.4), xRadius: 1.1, yRadius: 1.1).fill()
+        let tip = NSBezierPath()
+        tip.move(to: NSPoint(x: -width / 2, y: -3.6))
+        tip.line(to: NSPoint(x: 0, y: -10.6))
+        tip.line(to: NSPoint(x: width / 2, y: -3.6))
+        tip.close()
+        tip.fill()
+        NSGraphicsContext.current?.compositingOperation = .clear
+        NSBezierPath(rect: NSRect(x: -width, y: 6.0, width: width * 2, height: 1.1)).fill()    // the band
+        NSBezierPath(rect: NSRect(x: -width, y: -4.4, width: width * 2, height: 1.0)).fill()   // where the tip meets the body
     }
 }
