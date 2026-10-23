@@ -1,14 +1,13 @@
 // Renders MenuNote/AppIcon.icns.  Run from MenuNoteMac/:  swift tools/make_icon.swift
+// With a path (swift tools/make_icon.swift preview.png), writes a 512px preview there instead.
 import AppKit
 
-let backTop = NSColor(red: 0.231, green: 0.459, blue: 0.894, alpha: 1)
-let backBottom = NSColor(red: 0.137, green: 0.290, blue: 0.690, alpha: 1)
-let paper = NSColor(red: 0.992, green: 0.984, blue: 0.957, alpha: 1)
-let rule = NSColor(red: 0.722, green: 0.769, blue: 0.851, alpha: 1)
-let pencil = NSColor(red: 0.973, green: 0.737, blue: 0.231, alpha: 1)
-let wood = NSColor(red: 0.961, green: 0.851, blue: 0.690, alpha: 1)
-let lead = NSColor(red: 0.188, green: 0.208, blue: 0.259, alpha: 1)
-let eraser = NSColor(red: 0.906, green: 0.447, blue: 0.494, alpha: 1)
+// Warm and bright: a note at hand, not a document to sit down to.
+let backTop = NSColor(red: 1.000, green: 0.749, blue: 0.290, alpha: 1)
+let backBottom = NSColor(red: 0.969, green: 0.537, blue: 0.137, alpha: 1)
+let note = NSColor(red: 1.000, green: 0.992, blue: 0.957, alpha: 1)
+let fold = NSColor(red: 0.929, green: 0.878, blue: 0.788, alpha: 1)
+let ink = NSColor(red: 0.851, green: 0.400, blue: 0.075, alpha: 1)
 
 func render(_ px: Int) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
@@ -23,48 +22,52 @@ func render(_ px: Int) -> Data {
     let bg = NSBezierPath(roundedRect: body, xRadius: s * 0.18, yRadius: s * 0.18)
     NSGradient(starting: backTop, ending: backBottom)!.draw(in: bg, angle: -90)
 
-    // A sheet of ruled paper.
-    let sheet = NSRect(x: s * 0.27, y: s * 0.2, width: s * 0.46, height: s * 0.58)
-    paper.setFill()
-    NSBezierPath(roundedRect: sheet, xRadius: s * 0.035, yRadius: s * 0.035).fill()
-    rule.setFill()
-    for i in 0..<5 {
-        let y = sheet.maxY - s * 0.13 - CGFloat(i) * s * 0.085
-        let w = i == 4 ? sheet.width * 0.4 : sheet.width - s * 0.12
-        NSBezierPath(roundedRect: NSRect(x: sheet.minX + s * 0.06, y: y, width: w, height: s * 0.022),
-                     xRadius: s * 0.011, yRadius: s * 0.011).fill()
-    }
-
-    // A pencil across the lower-right corner, pointing down-left.
+    // A note, a corner turned up, ready to write on.
+    let sheet = NSRect(x: s * 0.27, y: s * 0.21, width: s * 0.46, height: s * 0.58)
+    let corner = s * 0.12
+    let page = NSBezierPath()
+    page.move(to: NSPoint(x: sheet.minX, y: sheet.maxY))
+    page.line(to: NSPoint(x: sheet.maxX, y: sheet.maxY))
+    page.line(to: NSPoint(x: sheet.maxX, y: sheet.minY + corner))
+    page.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY))
+    page.line(to: NSPoint(x: sheet.minX, y: sheet.minY))
+    page.close()
     NSGraphicsContext.saveGraphicsState()
-    let t = NSAffineTransform()
-    t.translateX(by: s * 0.63, yBy: s * 0.36)
-    t.rotate(byDegrees: 135)
-    t.concat()
-    let len = s * 0.36, w = s * 0.085
-    pencil.setFill()
-    NSRect(x: -len / 2, y: -w / 2, width: len, height: w).fill()
-    eraser.setFill()
-    NSBezierPath(roundedRect: NSRect(x: -len / 2 - s * 0.06, y: -w / 2, width: s * 0.07, height: w),
-                 xRadius: s * 0.02, yRadius: s * 0.02).fill()
-    let tip = NSBezierPath()
-    tip.move(to: NSPoint(x: len / 2, y: -w / 2))
-    tip.line(to: NSPoint(x: len / 2 + s * 0.09, y: 0))
-    tip.line(to: NSPoint(x: len / 2, y: w / 2))
-    tip.close()
-    wood.setFill()
-    tip.fill()
-    let point = NSBezierPath()
-    point.move(to: NSPoint(x: len / 2 + s * 0.06, y: -w * 0.17))
-    point.line(to: NSPoint(x: len / 2 + s * 0.09, y: 0))
-    point.line(to: NSPoint(x: len / 2 + s * 0.06, y: w * 0.17))
-    point.close()
-    lead.setFill()
-    point.fill()
+    let shadow = NSShadow()
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
+    shadow.shadowOffset = NSSize(width: 0, height: -s * 0.012)
+    shadow.shadowBlurRadius = s * 0.03
+    shadow.set()
+    note.setFill()
+    page.fill()
     NSGraphicsContext.restoreGraphicsState()
+    let flap = NSBezierPath()
+    flap.move(to: NSPoint(x: sheet.maxX, y: sheet.minY + corner))
+    flap.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY + corner))
+    flap.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY))
+    flap.close()
+    fold.setFill()
+    flap.fill()
+
+    // A single quick stroke of handwriting.
+    let scribble = NSBezierPath()
+    scribble.move(to: NSPoint(x: s * 0.34, y: s * 0.54))
+    scribble.curve(to: NSPoint(x: s * 0.46, y: s * 0.54), controlPoint1: NSPoint(x: s * 0.37, y: s * 0.64), controlPoint2: NSPoint(x: s * 0.42, y: s * 0.44))
+    scribble.curve(to: NSPoint(x: s * 0.58, y: s * 0.54), controlPoint1: NSPoint(x: s * 0.50, y: s * 0.64), controlPoint2: NSPoint(x: s * 0.54, y: s * 0.44))
+    scribble.curve(to: NSPoint(x: s * 0.66, y: s * 0.56), controlPoint1: NSPoint(x: s * 0.61, y: s * 0.61), controlPoint2: NSPoint(x: s * 0.64, y: s * 0.59))
+    scribble.lineWidth = s * 0.036
+    scribble.lineCapStyle = .round
+    scribble.lineJoinStyle = .round
+    ink.setStroke()
+    scribble.stroke()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
+}
+
+if CommandLine.arguments.count > 1 {
+    try! render(512).write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
+    exit(0)
 }
 
 let fm = FileManager.default

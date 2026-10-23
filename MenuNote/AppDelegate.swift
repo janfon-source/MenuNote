@@ -1,7 +1,9 @@
 import AppKit
 import ServiceManagement
 
-/// Menu bar app: no Dock icon, just a status item that toggles a popover editor.
+/// Menu bar app: a status item that toggles a popover editor, and a Dock icon too if wanted
+/// (Presence). Without the menu bar icon there's nothing to hang the popover from, so the editor
+/// stays pinned in its own window.
 @main
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // NSApplication holds its delegate weakly, so keep it alive here.
@@ -12,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let delegate = AppDelegate()
         instance = delegate
         app.delegate = delegate
-        app.setActivationPolicy(.accessory)
+        app.setActivationPolicy(Presence.showInDock ? .regular : .accessory)
         app.run()
     }
 
@@ -41,6 +43,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        // A transient popover should close at a click anywhere else, but after a menu has been
+        // open in it AppKit can stop noticing clicks in other apps, so those close it here too.
+        // While pinned, or while a panel or alert is up, the behavior isn't transient and it stays.
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            guard let self, self.popover.isShown, self.popover.behavior == .transient else { return }
+            self.popover.performClose(nil)
+        }
+
+        applyPresence()
+        NotificationCenter.default.addObserver(forName: Presence.didChange, object: nil, queue: .main) { [weak self] _ in
+            self?.applyPresence()
+        }
         applyLanguage()
         NotificationCenter.default.addObserver(forName: Language.didChange, object: nil, queue: .main) { [weak self] _ in
             self?.applyLanguage()
@@ -58,6 +72,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.mainMenu = MainMenu.build(editor: editor)
         statusItem.button?.toolTip = tr("隨手記", "MenuNote")
         statusItem.button?.setAccessibilityLabel(tr("隨手記", "MenuNote"))
+    }
+
+    /// Adds or removes the Dock and menu bar icons to match the settings.
+    private func applyPresence() {
+        statusItem.isVisible = Presence.showInMenuBar
+        editor.canUnpin = Presence.showInMenuBar
+        if !Presence.showInMenuBar, !editor.pinned {
+            editor.togglePin(nil)   // moves the editor out of the popover, which needs the menu bar icon
+        }
+        let policy: NSApplication.ActivationPolicy = Presence.showInDock ? .regular : .accessory
+        if NSApp.activationPolicy() != policy {
+            NSApp.setActivationPolicy(policy)
+            // Leaving the Dock deactivates the app; bring the window back where it was.
+            if panel?.isVisible == true { DispatchQueue.main.async { self.showPanel() } }
+        }
+    }
+
+    /// Clicking the Dock icon opens the editor, as the menu bar icon does.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showPopover()
+        return false
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -150,10 +185,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.level = .floating
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.minSize = panel.frameRect(forContentRect: NSRect(origin: .zero, size: EditorViewController.minSize)).size
-        // Where it was left last time; the first time, just under the menu bar icon.
-        if !panel.setFrameUsingName(Self.panelFrameName), let button = statusItem.button?.window?.frame {
-            let size = panel.frame.size
-            panel.setFrameOrigin(NSPoint(x: button.midX - size.width / 2, y: button.minY - size.height - 6))
+        // Where it was left last time; the first time, just under the menu bar icon, if there is one.
+        if !panel.setFrameUsingName(Self.panelFrameName) {
+            if statusItem.isVisible, let button = statusItem.button?.window?.frame {
+                let size = panel.frame.size
+                panel.setFrameOrigin(NSPoint(x: button.midX - size.width / 2, y: button.minY - size.height - 6))
+            } else {
+                panel.center()
+            }
         }
         panel.setFrameAutosaveName(Self.panelFrameName)
         return panel
