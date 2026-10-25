@@ -1032,11 +1032,21 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         // Lay the text out at paper width in black on white, independent of the popover's size and theme.
         let width = info.paperSize.width - info.leftMargin - info.rightMargin
         let printView = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 1))
-        printView.isRichText = false
-        printView.string = textView.string
-        printView.font = .systemFont(ofSize: 12)
-        printView.textColor = .black
+        printView.appearance = NSAppearance(named: .aqua)   // the renderer's colors, as on white paper
         printView.backgroundColor = .white
+        if isMarkdown || previewMode != .off {
+            // As the preview shows it: headings, lists, tables and code, not the Markdown marks.
+            printView.textContainer?.replaceLayoutManager(PreviewLayoutManager())   // inline code shading
+            let padding = printView.textContainer?.lineFragmentPadding ?? 0
+            printView.textStorage?.setAttributedString(MarkdownRenderer.render(
+                textView.string, fontSize: 12, baseURL: fileURL?.deletingLastPathComponent(),
+                width: width - padding * 2, expandedSpoilers: expandedSpoilers))
+        } else {
+            printView.isRichText = false
+            printView.string = textView.string
+            printView.font = .systemFont(ofSize: 12)
+            printView.textColor = .black
+        }
         printView.isVerticallyResizable = true
         printView.textContainer?.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
         printView.textContainer?.widthTracksTextView = true
