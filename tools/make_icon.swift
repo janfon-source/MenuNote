@@ -5,9 +5,27 @@ import AppKit
 // Warm and bright: a note at hand, not a document to sit down to.
 let backTop = NSColor(red: 1.000, green: 0.749, blue: 0.290, alpha: 1)
 let backBottom = NSColor(red: 0.969, green: 0.537, blue: 0.137, alpha: 1)
-let note = NSColor(red: 1.000, green: 0.992, blue: 0.957, alpha: 1)
-let fold = NSColor(red: 0.929, green: 0.878, blue: 0.788, alpha: 1)
-let ink = NSColor(red: 0.851, green: 0.400, blue: 0.075, alpha: 1)
+
+/// The same pen as the menu bar icon (StatusIcon in AppDelegate.swift), in its 18-point box.
+func glyph() {
+    NSGraphicsContext.saveGraphicsState()
+    defer { NSGraphicsContext.restoreGraphicsState() }
+    let turn = NSAffineTransform()
+    turn.translateX(by: 9, yBy: 9)
+    turn.rotate(byDegrees: -45)
+    turn.concat()
+    let width: CGFloat = 4.4
+    NSBezierPath(roundedRect: NSRect(x: -width / 2, y: -4.2, width: width, height: 14.4), xRadius: 1.1, yRadius: 1.1).fill()
+    let tip = NSBezierPath()
+    tip.move(to: NSPoint(x: -width / 2, y: -3.6))
+    tip.line(to: NSPoint(x: 0, y: -10.6))
+    tip.line(to: NSPoint(x: width / 2, y: -3.6))
+    tip.close()
+    tip.fill()
+    NSGraphicsContext.current?.compositingOperation = .clear
+    NSBezierPath(rect: NSRect(x: -width, y: 6.0, width: width * 2, height: 1.1)).fill()    // the band
+    NSBezierPath(rect: NSRect(x: -width, y: -4.4, width: width * 2, height: 1.0)).fill()   // where the tip meets the body
+}
 
 func render(_ px: Int) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
@@ -19,47 +37,32 @@ func render(_ px: Int) -> Data {
 
     // macOS icon grid: ~10% transparent margin around a rounded square.
     let body = NSRect(x: s * 0.1, y: s * 0.1, width: s * 0.8, height: s * 0.8)
-    let bg = NSBezierPath(roundedRect: body, xRadius: s * 0.18, yRadius: s * 0.18)
-    NSGradient(starting: backTop, ending: backBottom)!.draw(in: bg, angle: -90)
+    let square = NSBezierPath(roundedRect: body, xRadius: s * 0.18, yRadius: s * 0.18)
+    NSGradient(starting: backTop, ending: backBottom)!.draw(in: square, angle: -90)
 
-    // A note, a corner turned up, ready to write on.
-    let sheet = NSRect(x: s * 0.27, y: s * 0.21, width: s * 0.46, height: s * 0.58)
-    let corner = s * 0.12
-    let page = NSBezierPath()
-    page.move(to: NSPoint(x: sheet.minX, y: sheet.maxY))
-    page.line(to: NSPoint(x: sheet.maxX, y: sheet.maxY))
-    page.line(to: NSPoint(x: sheet.maxX, y: sheet.minY + corner))
-    page.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY))
-    page.line(to: NSPoint(x: sheet.minX, y: sheet.minY))
-    page.close()
+    // The menu bar icon's shape, white, filling the middle of the square. It's drawn on a layer of
+    // its own, so the parts it cuts out show the square through rather than leaving holes.
+    let layer = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
+                                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                 colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
     NSGraphicsContext.saveGraphicsState()
-    let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.22)
-    shadow.shadowOffset = NSSize(width: 0, height: -s * 0.012)
-    shadow.shadowBlurRadius = s * 0.03
-    shadow.set()
-    note.setFill()
-    page.fill()
+    NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: layer)
+    let place = NSAffineTransform()
+    place.translateX(by: s * 0.5, yBy: s * 0.5)
+    place.scale(by: s * 0.56 / 18)
+    place.translateX(by: -9, yBy: -9)
+    place.concat()
+    NSColor.white.set()
+    glyph()
     NSGraphicsContext.restoreGraphicsState()
-    let flap = NSBezierPath()
-    flap.move(to: NSPoint(x: sheet.maxX, y: sheet.minY + corner))
-    flap.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY + corner))
-    flap.line(to: NSPoint(x: sheet.maxX - corner, y: sheet.minY))
-    flap.close()
-    fold.setFill()
-    flap.fill()
-
-    // A single quick stroke of handwriting.
-    let scribble = NSBezierPath()
-    scribble.move(to: NSPoint(x: s * 0.34, y: s * 0.54))
-    scribble.curve(to: NSPoint(x: s * 0.46, y: s * 0.54), controlPoint1: NSPoint(x: s * 0.37, y: s * 0.64), controlPoint2: NSPoint(x: s * 0.42, y: s * 0.44))
-    scribble.curve(to: NSPoint(x: s * 0.58, y: s * 0.54), controlPoint1: NSPoint(x: s * 0.50, y: s * 0.64), controlPoint2: NSPoint(x: s * 0.54, y: s * 0.44))
-    scribble.curve(to: NSPoint(x: s * 0.66, y: s * 0.56), controlPoint1: NSPoint(x: s * 0.61, y: s * 0.61), controlPoint2: NSPoint(x: s * 0.64, y: s * 0.59))
-    scribble.lineWidth = s * 0.036
-    scribble.lineCapStyle = .round
-    scribble.lineJoinStyle = .round
-    ink.setStroke()
-    scribble.stroke()
+    let shadow = NSShadow()
+    shadow.shadowColor = backBottom.withAlphaComponent(0.45)
+    shadow.shadowOffset = NSSize(width: 0, height: -s * 0.012)
+    shadow.shadowBlurRadius = s * 0.02
+    NSGraphicsContext.saveGraphicsState()
+    shadow.set()
+    layer.draw(in: NSRect(x: 0, y: 0, width: s, height: s), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+    NSGraphicsContext.restoreGraphicsState()
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!
