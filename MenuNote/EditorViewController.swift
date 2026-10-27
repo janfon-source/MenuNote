@@ -193,6 +193,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
             shareButton,
             printButton,
             toolButton("face.smiling", "插入 Emoji", "Insert Emoji", #selector(showEmojiMenu(_:))),
+            toolButton("character", "插入 ASCII 字元：標點與符號、數字、字母，附十進位和十六進位代碼",
+                       "Insert an ASCII Character: punctuation, symbols, digits and letters, with their codes in decimal and hex",
+                       #selector(showASCIIMenu(_:))),
             markdownButton,
             splitButton,
             spacer,
@@ -563,7 +566,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     // MARK: - State display
 
     private func updateHeader() {
-        titleLabel.stringValue = displayName + (isDirty ? tr(" — 已編輯", " — Edited") : "")
+        // The whole path, so files with the same name in different folders can be told apart.
+        titleLabel.stringValue = (fileURL?.path ?? displayName) + (isDirty ? tr(" — 已編輯", " — Edited") : "")
         titleLabel.toolTip = fileURL?.path ?? tr("尚未儲存", "Not saved yet")
     }
 
@@ -1115,6 +1119,22 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         EmojiMenu.used(choice.name)
         textView.insertText(choice.text, replacementRange: textView.selectedRange())
         if previewMode != .full { view.window?.makeFirstResponder(textView) }
+    }
+
+    // MARK: - ASCII
+
+    @objc func showASCIIMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        ASCIIMenu.items(target: self, action: #selector(insertCharacter(_:))).forEach(menu.addItem)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    /// Inserts the character at the insertion point, replacing any selection, as one undoable edit.
+    @objc func insertCharacter(_ sender: NSMenuItem) {
+        guard let character = sender.representedObject as? String else { return }
+        if previewMode == .full { previewMode = .off }   // the editor, to type into
+        textView.insertText(character, replacementRange: textView.selectedRange())
+        view.window?.makeFirstResponder(textView)
     }
 
     /// The system's picker, for emoji beyond the menu's.

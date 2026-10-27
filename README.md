@@ -12,6 +12,8 @@ A lightweight plain-text notepad that lives in the macOS menu bar. Click the men
 - **Several files at once, in tabs**: each file opened (⌘O, which can pick several, or from the Finder) or made (⌘N) gets a tab of its own under the toolbar, named after the file; a file already open just shows its tab again. A tab whose file has changes not yet saved has its name in bright green. Click a tab to switch (⌃Tab / ⌃⇧Tab go to the next and previous); each keeps its own text, place, preview and undo. Drag tabs into the order you like. × or ⌥⌘W closes a tab, asking first about unsaved changes; quitting asks about each one.
 - **Email** (⇧⌘E or the More menu): opens a new message in the default mail app with the text as its body, and the file name or first line as the subject.
 - **Insert emoji** from the smiley toolbar button or the right-click menu: common GitHub emoji by category, inserted as shortcodes such as `:smile:` (hold ⌥ for the emoji itself), with recent ones first.
+- **Insert an ASCII character** from the toolbar's character button: punctuation and symbols, digits, capital and small letters, each with its code in decimal and hex.
+- **The file's whole path** shows at the top of the window, so files with the same name in different folders can be told apart.
 - **Line numbers** beside the editor, toggled with ⌥⌘L or from the More menu. A wrapped line keeps a single number. The setting is remembered.
 - **Live updates**: when another app changes the open file, the new text loads automatically; if there are unsaved changes here too, you're asked which to keep.
 - **Encoding detection**: reads UTF-8, UTF-16, Big5 and GB2312 / GBK / GB18030. When saving a file that wasn't UTF-8, you choose whether to keep its encoding or convert to UTF-8.
@@ -138,6 +140,8 @@ Run `./build.sh` alone to build into `build/隨手記.app` without installing, o
 - **同時開啟多個檔案，以標籤頁管理**：每個開啟（⌘O，可一次選多個，也可以從 Finder 開啟）或新增（⌘N）的檔案，在工具列下方各有一個以檔名為名稱的標籤；已經開著的檔案會直接切換到它的標籤。修改後還沒儲存的檔案，標籤名稱以亮綠色顯示。點標籤切換（⌃Tab／⌃⇧Tab 切到下一個、上一個），每個標籤各自保留文字、游標位置、預覽和還原紀錄。標籤可以拖曳調整順序。按 × 或 ⌥⌘W 關閉標籤，尚未儲存時會先詢問；結束 App 時也會逐一詢問。
 - **以郵件寄出**（⇧⌘E 或「更多」選單）：在預設的郵件軟體開一封新郵件，內文是編輯中的文字，主旨是檔名或第一行。
 - **插入 Emoji**：工具列的笑臉按鈕或右鍵選單，依分類列出常用的 GitHub emoji，插入 `:smile:` 這樣的代碼（按住 ⌥ 則插入 emoji 本身），最近用過的排在最前面。
+- **插入 ASCII 字元**：工具列的字元按鈕，依標點與符號、數字、大寫字母、小寫字母分類，每個字元都附十進位和十六進位代碼。
+- **視窗上方顯示檔案的完整路徑**，不同資料夾裡同名的檔案也分得出來。
 - **行號**：在編輯區左側顯示行號（⌥⌘L 或「更多」選單開關），自動換行的續行不另外編號，設定會記住。
 - **自動更新**：開著的檔案在其他 App 被修改時，自動載入新內容；隨手記裡也有未儲存的修改時，會先問要保留哪一邊。
 - **自動判斷編碼**：讀得懂 UTF-8、UTF-16、Big5、GB2312 / GBK / GB18030。非 UTF-8 的檔案存檔時，可以選擇保留原編碼或改存 UTF-8。
