@@ -9,6 +9,7 @@ A lightweight plain-text notepad that lives in the macOS menu bar. Click the men
 - **Menu bar popover**, resizable from the corner. Show it in the Dock, the menu bar, or both (at least one stays on); with no menu bar icon, the window stays pinned and opens from the Dock.
 - **Pinning**: the pin turns the window into a floating one you can drag anywhere (by its top edge or any empty space) and resize by its edges; it stays up while you use other apps and comes back where you left it. Unpin and it returns under the menu bar icon at the size it had before.
 - **Plain-text files**: open, save, save as, print, and share to Notes or Messages.
+- **Several files at once, in tabs**: each file opened (⌘O, which can pick several, or from the Finder) or made (⌘N) gets a tab of its own under the toolbar, named after the file; a file already open just shows its tab again. A tab whose file has changes not yet saved has its name in bright green. Click a tab to switch (⌃Tab / ⌃⇧Tab go to the next and previous); each keeps its own text, place, preview and undo. Drag tabs into the order you like. × or ⌥⌘W closes a tab, asking first about unsaved changes; quitting asks about each one.
 - **Email** (⇧⌘E or the More menu): opens a new message in the default mail app with the text as its body, and the file name or first line as the subject.
 - **Insert emoji** from the smiley toolbar button or the right-click menu: common GitHub emoji by category, inserted as shortcodes such as `:smile:` (hold ⌥ for the emoji itself), with recent ones first.
 - **Line numbers** beside the editor, toggled with ⌥⌘L or from the More menu. A wrapped line keeps a single number. The setting is remembered.
@@ -134,6 +135,7 @@ Run `./build.sh` alone to build into `build/隨手記.app` without installing, o
 - **選單列小視窗**：可拖曳右下角調整大小。可設定顯示在 Dock、選單列或兩者（至少要顯示一個）；不顯示在選單列時，視窗固定為釘選，從 Dock 開啟。
 - **釘選視窗**：按圖釘後，視窗變成可自由拖曳（拖上緣或空白處）、可拖曳邊緣調整大小的浮動視窗，切換到其他 App 也不會收起，下次顯示仍在原處；再按一次解除釘選，視窗回到選單列圖示下方、釘選前的大小。
 - **純文字檔**：開啟、儲存、另存新檔、列印、分享到備忘錄或訊息。
+- **同時開啟多個檔案，以標籤頁管理**：每個開啟（⌘O，可一次選多個，也可以從 Finder 開啟）或新增（⌘N）的檔案，在工具列下方各有一個以檔名為名稱的標籤；已經開著的檔案會直接切換到它的標籤。修改後還沒儲存的檔案，標籤名稱以亮綠色顯示。點標籤切換（⌃Tab／⌃⇧Tab 切到下一個、上一個），每個標籤各自保留文字、游標位置、預覽和還原紀錄。標籤可以拖曳調整順序。按 × 或 ⌥⌘W 關閉標籤，尚未儲存時會先詢問；結束 App 時也會逐一詢問。
 - **以郵件寄出**（⇧⌘E 或「更多」選單）：在預設的郵件軟體開一封新郵件，內文是編輯中的文字，主旨是檔名或第一行。
 - **插入 Emoji**：工具列的笑臉按鈕或右鍵選單，依分類列出常用的 GitHub emoji，插入 `:smile:` 這樣的代碼（按住 ⌥ 則插入 emoji 本身），最近用過的排在最前面。
 - **行號**：在編輯區左側顯示行號（⌥⌘L 或「更多」選單開關），自動換行的續行不另外編號，設定會記住。

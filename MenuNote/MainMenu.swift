@@ -20,7 +20,14 @@ enum MainMenu {
         add(file, tr("以郵件寄出…", "Email…"), #selector(EditorViewController.emailDocument(_:)), "E", target: editor)
         file.addItem(.separator())
         add(file, tr("列印…", "Print…"), #selector(EditorViewController.printDocument(_:)), "p", target: editor)
+        add(file, tr("關閉標籤頁", "Close Tab"), #selector(EditorViewController.closeTab(_:)), "w", target: editor)
+            .keyEquivalentModifierMask = [.command, .option]
         add(file, tr("關閉視窗", "Close Window"), #selector(EditorViewController.closePopover(_:)), "w", target: editor)
+        file.addItem(.separator())
+        add(file, tr("下一個標籤頁", "Next Tab"), #selector(EditorViewController.nextTab(_:)), "\t", target: editor)
+            .keyEquivalentModifierMask = [.control]
+        add(file, tr("上一個標籤頁", "Previous Tab"), #selector(EditorViewController.previousTab(_:)), "\t", target: editor)
+            .keyEquivalentModifierMask = [.control, .shift]
 
         let edit = submenu(in: main, tr("編輯", "Edit"))
         add(edit, tr("還原", "Undo"), Selector(("undo:")), "z")

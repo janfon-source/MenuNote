@@ -19,8 +19,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         didSet {
             updateHeader()
             updateButtons()
+            if isDirty != oldValue { rebuildTabs() }   // its tab turns green, or back
         }
     }
+
+    /// The files open, one per tab, in the order shown; `current` is the one in the editor. Its
+    /// state lives in the editor and the properties above while it shows, and is kept in its
+    /// Document while another does.
+    private var documents = [Document()]
+    private var current = 0
+    private let tabStrip = NSStackView()
 
     /// The encoding the file was read with, used again when saving if the user keeps it.
     private var fileEncoding = String.Encoding.utf8 {
@@ -194,7 +202,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         toolbar.spacing = 2
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
 
-        let header = NSStackView(views: [titleLabel, toolbar])
+        tabStrip.spacing = 4
+        tabStrip.setHuggingPriority(.required, for: .vertical)
+        tabStrip.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        let header = NSStackView(views: [titleLabel, toolbar, tabStrip])
         header.orientation = .vertical
         header.alignment = .leading
         header.spacing = 6
@@ -252,6 +263,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
             column.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             header.widthAnchor.constraint(equalTo: column.widthAnchor),
             toolbar.widthAnchor.constraint(equalTo: header.widthAnchor, constant: -20),
+            tabStrip.widthAnchor.constraint(equalTo: header.widthAnchor, constant: -20),
             body.widthAnchor.constraint(equalTo: column.widthAnchor),
             footer.widthAnchor.constraint(equalTo: column.widthAnchor),
         ])
@@ -264,6 +276,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         updatePinButton()
         updateMarkdownButton()
         updateHeader()
+        rebuildTabs()
         updateStats()
         installEscapeMonitor()
         installScrollSync()
@@ -621,6 +634,11 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         }
     }
 
+    /// Each tab keeps its own undo: ⌘Z in one file never undoes typing in another.
+    func undoManager(for view: NSTextView) -> UndoManager? {
+        view === textView ? documents[current].undoManager : nil
+    }
+
     /// The current line's number is drawn stronger.
     func textViewDidChangeSelection(_ notification: Notification) {
         if notification.object as AnyObject === textView { lineNumbers?.needsDisplay = true }
@@ -724,19 +742,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         }
     }
 
+    /// A new, empty file in a tab of its own.
     @objc func newDocument(_ sender: Any?) {
-        guard confirmDiscardChanges() else { return }
-        setText("", url: nil)
+        documents.append(Document())
+        showTab(documents.count - 1)
     }
 
+    /// Opens files, each in a tab (several may be chosen at once).
     @objc func openDocument(_ sender: Any?) {
-        guard confirmDiscardChanges() else { return }
         let panel = NSOpenPanel()
         panel.delegate = self   // decides which files can be chosen; see panel(_:shouldEnable:)
-        panel.allowsMultipleSelection = false
+        panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
-        guard keepingPopoverOpen({ panel.runModal() }) == .OK, let url = panel.url else { return }
-        load(url)
+        guard keepingPopoverOpen({ panel.runModal() }) == .OK else { return }
+        for url in panel.urls { openInTab(url) }
     }
 
     /// Text files can be chosen: plain text, other text such as JSON, HTML or XML (but not RTF,
@@ -750,10 +769,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         return (url.pathExtension.isEmpty || type.isDynamic) && TextFile.looksLikeText(url)
     }
 
-    /// Opens a file handed over by Finder, asking about unsaved changes first.
+    /// Opens a file handed over by Finder, in a tab.
     func open(_ url: URL) {
-        guard url != fileURL || isDirty, confirmDiscardChanges() else { return }
-        load(url)
+        openInTab(url)
     }
 
     // MARK: - Changes made elsewhere
@@ -855,12 +873,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         if previewMode != .off { renderPreview() }
     }
 
-    private func load(_ url: URL) {
+    @discardableResult
+    private func load(_ url: URL) -> Bool {
         do {
             let file = try TextFile.read(url)
             setText(file.text, url: url, encoding: file.encoding)
+            rebuildTabs()
+            return true
         } catch {
             showError(tr("無法開啟「\(url.lastPathComponent)」", "Couldn’t open “\(url.lastPathComponent)”"), error)
+            return false
         }
     }
 
@@ -891,7 +913,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
             knownModification = modificationDate(url)
             let moved = url != fileURL
             fileURL = url
-            if moved { watchFile() }
+            if moved {
+                watchFile()
+                rebuildTabs()   // its tab takes the new name
+            }
             fileEncoding = encoding
             encodingChosen = true
             isDirty = false
@@ -1291,6 +1316,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         }
         updateHeader()
         updateStats()
+        rebuildTabs()   // "Untitled" in the language now
     }
 
     @objc func toggleShowInDock(_ sender: Any?) { Presence.showInDock.toggle() }
@@ -1325,8 +1351,177 @@ extension EditorViewController: NSMenuItemValidation {
             return hasText || previewMode == .full
         case #selector(toggleSplitPreview(_:)):
             return hasText || previewMode == .split
+        case #selector(nextTab(_:)), #selector(previousTab(_:)):
+            return documents.count > 1
         default:
             return true
         }
+    }
+}
+
+// MARK: - Tabs
+
+/// A file open in a tab, kept here while another tab shows: what the editor needs to show it again.
+private final class Document {
+    var text = ""
+    var fileURL: URL?
+    var isDirty = false
+    var encoding = String.Encoding.utf8
+    var encodingChosen = true
+    var knownModification: Date?
+    var externalChangePending = false
+    var selection = NSRange(location: 0, length: 0)
+    var scroll = NSPoint.zero
+    var previewMode = EditorViewController.PreviewMode.off
+    var expandedSpoilers = Set<Int>()
+    /// Its own, so ⌘Z only ever undoes what was typed in this file.
+    let undoManager = UndoManager()
+
+    var name: String { fileURL?.lastPathComponent ?? tr("未命名", "Untitled") }
+}
+
+extension EditorViewController {
+    /// Keeps what the editor shows in the current tab's Document.
+    private func stashCurrent() {
+        let document = documents[current]
+        document.text = textView.string
+        document.fileURL = fileURL
+        document.isDirty = isDirty
+        document.encoding = fileEncoding
+        document.encodingChosen = encodingChosen
+        document.knownModification = knownModification
+        document.externalChangePending = externalChangePending
+        document.selection = textView.selectedRange()
+        document.scroll = scrollView.contentView.bounds.origin
+        document.previewMode = previewMode
+        document.expandedSpoilers = expandedSpoilers
+    }
+
+    /// Shows a tab's file in the editor, as it was left: text, place, preview and all.
+    /// `keepingCurrent`: the tab showing is kept first (not when it's just been closed).
+    private func showTab(_ index: Int, keepingCurrent: Bool = true) {
+        guard documents.indices.contains(index) else { return }
+        if keepingCurrent { stashCurrent() }
+        current = index
+        let document = documents[index]
+        fileURL = document.fileURL
+        textView.string = document.text
+        fileEncoding = document.encoding
+        encodingChosen = document.encodingChosen
+        knownModification = document.knownModification
+        externalChangePending = document.externalChangePending
+        expandedSpoilers = document.expandedSpoilers
+        isDirty = document.isDirty
+        let length = (document.text as NSString).length
+        let start = min(document.selection.location, length)
+        textView.setSelectedRange(NSRange(location: start, length: min(document.selection.length, length - start)))
+        updateStats()
+        updateHeader()
+        lineNumbers?.updateThickness()
+        watchFile()
+        previewMode = document.previewMode   // renders the preview, if any, and focuses
+        view.layoutSubtreeIfNeeded()
+        scrollView.contentView.scroll(to: document.scroll)
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        rebuildTabs()
+        focusText()
+        checkFileOnDisk()   // it may have changed elsewhere while another tab showed
+    }
+
+    /// Opens a file in a tab: the one it's already in, the tab showing if that's an untouched
+    /// new one, or else a new tab.
+    func openInTab(_ url: URL) {
+        let target = url.standardizedFileURL
+        stashCurrent()
+        if let index = documents.firstIndex(where: { $0.fileURL?.standardizedFileURL == target }) {
+            return showTab(index)
+        }
+        let showing = documents[current]
+        let reuse = showing.fileURL == nil && !showing.isDirty && showing.text.isEmpty
+        if !reuse {
+            documents.append(Document())
+            showTab(documents.count - 1)
+        }
+        if !load(url), !reuse { discardTab(current) }   // the new tab it would have gone in
+    }
+
+    /// Closes a tab, asking first about unsaved changes. Closing the last leaves a new, empty one.
+    private func closeTab(at index: Int) {
+        if index != current { showTab(index) }
+        guard confirmDiscardChanges() else { return }
+        discardTab(current)
+    }
+
+    private func discardTab(_ index: Int) {
+        documents.remove(at: index)
+        if documents.isEmpty { documents.append(Document()) }
+        current = min(index, documents.count - 1)
+        showTab(current, keepingCurrent: false)
+    }
+
+    @objc func closeTab(_ sender: Any?) {
+        closeTab(at: (sender as? NSButton)?.tag ?? current)
+    }
+
+    @objc func nextTab(_ sender: Any?) { showTab((current + 1) % documents.count) }
+    @objc func previousTab(_ sender: Any?) { showTab((current - 1 + documents.count) % documents.count) }
+
+    /// Whether any tab has changes not saved, for quitting.
+    func hasUnsavedChanges() -> Bool {
+        stashCurrent()
+        return documents.contains(where: \.isDirty)
+    }
+
+    /// Asks about each tab with unsaved changes in turn, showing it; false if one is cancelled.
+    func confirmDiscardAllChanges() -> Bool {
+        stashCurrent()
+        for (index, document) in documents.enumerated() where document.isDirty {
+            showTab(index)
+            guard confirmDiscardChanges() else { return false }
+        }
+        return true
+    }
+
+    /// The tabs under the toolbar: each file's name, in bright green while it has unsaved changes.
+    func rebuildTabs() {
+        guard isViewLoaded else { return }
+        for view in tabStrip.arrangedSubviews { view.removeFromSuperview() }
+        for (index, document) in documents.enumerated() {
+            let active = index == current
+            let dirty = active ? isDirty : document.isDirty
+            let title = NSTextField(labelWithString: active ? displayName : document.name)
+            title.font = .systemFont(ofSize: 12, weight: active ? .semibold : .regular)
+            title.textColor = dirty ? .systemGreen : active ? .labelColor : .secondaryLabelColor
+            title.lineBreakMode = .byTruncatingMiddle
+            title.setContentCompressionResistancePriority(.init(200), for: .horizontal)
+            let close = NSButton(image: NSImage(systemSymbolName: "xmark", accessibilityDescription: tr("關閉", "Close"))!
+                .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))!, target: self, action: #selector(closeTab(_:)))
+            close.isBordered = false
+            close.tag = index
+            close.contentTintColor = .secondaryLabelColor
+            close.toolTip = tr("關閉這個標籤頁", "Close This Tab")
+            close.setContentHuggingPriority(.required, for: .horizontal)
+            let chip = TabChip(views: [title, close], active: active)
+            let path = (active ? fileURL : document.fileURL)?.path ?? tr("尚未儲存", "Not saved yet")
+            chip.toolTip = path + (dirty ? tr("（已修改，尚未儲存）", " (edited, not saved)") : "") + tr("（拖曳可調整順序）", " (drag to reorder)")
+            chip.onSelect = { [weak self] in
+                guard let self, index != self.current else { return }
+                self.showTab(index)
+            }
+            chip.onMove = { [weak self] from, to in self?.moveTab(from: from, to: to) }
+            tabStrip.addArrangedSubview(chip)
+        }
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        tabStrip.addArrangedSubview(spacer)
+    }
+
+    /// A tab dragged to another place: the files take the new order, the same one showing.
+    private func moveTab(from: Int, to: Int) {
+        guard documents.indices.contains(from), documents.indices.contains(to), from != to else { return rebuildTabs() }
+        let showing = documents[current]
+        documents.insert(documents.remove(at: from), at: to)
+        current = documents.firstIndex { $0 === showing } ?? 0
+        rebuildTabs()
     }
 }

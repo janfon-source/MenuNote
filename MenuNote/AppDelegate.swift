@@ -225,19 +225,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func openFromMenu() { showPopover() }
 
-    /// Files opened from Finder (Open With, or dropped on the app icon).
+    /// Files opened from Finder (Open With, or dropped on the app icon), each in a tab.
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
+        guard !urls.isEmpty else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.showPopover()
-            self.editor.open(url)
+            for url in urls { self.editor.open(url) }
         }
     }
 
+    /// Every tab with unsaved changes is shown in turn, asking whether to save it.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard editor.isDirty else { return .terminateNow }
+        guard editor.hasUnsavedChanges() else { return .terminateNow }
         showPopover()
-        return editor.confirmDiscardChanges() ? .terminateNow : .terminateCancel
+        return editor.confirmDiscardAllChanges() ? .terminateNow : .terminateCancel
     }
 }
 
