@@ -13,7 +13,7 @@ A lightweight plain-text notepad that lives in the macOS menu bar. Click the men
 - **Email** (⇧⌘E or the More menu): opens a new message in the default mail app with the text as its body, and the file name or first line as the subject.
 - **Insert emoji** from the smiley toolbar button or the right-click menu: common GitHub emoji by category, inserted as shortcodes such as `:smile:` (hold ⌥ for the emoji itself), with recent ones first.
 - **Insert an ASCII character** from the toolbar's character button: punctuation and symbols, digits, capital and small letters, each with its code in decimal and hex.
-- **Calculator** from the toolbar's calculator button, in a small floating window laid out like the Mac's Calculator: × and ÷ before + and −, worked out in decimal (0.1 + 0.2 is 0.3), percent, change sign, the expression so far above the number, and the keyboard too (Esc clears). ⌘C copies the result, ⌘V pastes a number, and a titlebar button inserts the result in the note.
+- **Calculator** from the toolbar's calculator button, in a small floating window laid out like the Mac's Calculator: × and ÷ before + and −, worked out in decimal (0.1 + 0.2 is 0.3), percent, change sign, the expression so far above the number, and the keyboard too (Esc clears). ⌘C copies the result and ⌘V pastes a number; the titlebar buttons copy the result or insert it in the note, and then bring the note up.
 - **The file's whole path** shows at the top of the window, so files with the same name in different folders can be told apart.
 - **Line numbers** beside the editor, toggled with ⌥⌘L or from the More menu. A wrapped line keeps a single number. The setting is remembered.
 - **Live updates**: when another app changes the open file, the new text loads automatically; if there are unsaved changes here too, you're asked which to keep.
@@ -142,7 +142,7 @@ Run `./build.sh` alone to build into `build/隨手記.app` without installing, o
 - **以郵件寄出**（⇧⌘E 或「更多」選單）：在預設的郵件軟體開一封新郵件，內文是編輯中的文字，主旨是檔名或第一行。
 - **插入 Emoji**：工具列的笑臉按鈕或右鍵選單，依分類列出常用的 GitHub emoji，插入 `:smile:` 這樣的代碼（按住 ⌥ 則插入 emoji 本身），最近用過的排在最前面。
 - **插入 ASCII 字元**：工具列的字元按鈕，依標點與符號、數字、大寫字母、小寫字母分類，每個字元都附十進位和十六進位代碼。
-- **計算機**：工具列的計算機按鈕，打開一個浮在最上層、版面和 Mac 計算機一樣的小視窗：先乘除後加減，以十進位計算（0.1 + 0.2 就是 0.3），有百分比、正負號，數字上方顯示算式，也能用鍵盤操作（Esc 清除）。⌘C 拷貝結果、⌘V 貼上數字，標題列的按鈕可把結果插入筆記。
+- **計算機**：工具列的計算機按鈕，打開一個浮在最上層、版面和 Mac 計算機一樣的小視窗：先乘除後加減，以十進位計算（0.1 + 0.2 就是 0.3），有百分比、正負號，數字上方顯示算式，也能用鍵盤操作（Esc 清除）。⌘C 拷貝結果、⌘V 貼上數字；標題列的按鈕可拷貝結果或把結果插入筆記，按完會打開隨手記的畫面。
 - **視窗上方顯示檔案的完整路徑**，不同資料夾裡同名的檔案也分得出來。
 - **行號**：在編輯區左側顯示行號（⌥⌘L 或「更多」選單開關），自動換行的續行不另外編號，設定會記住。
 - **自動更新**：開著的檔案在其他 App 被修改時，自動載入新內容；隨手記裡也有未儲存的修改時，會先問要保留哪一邊。

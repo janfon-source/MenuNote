@@ -1147,6 +1147,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     @objc func showCalculator(_ sender: Any?) {
         let calculator = CalculatorWindow.shared
         calculator.onInsert = { [weak self] text in self?.insertText(text) }
+        // After the click is done with, or the popover could take it as one outside and close.
+        calculator.onShowNote = { DispatchQueue.main.async { (NSApp.delegate as? AppDelegate)?.showPopover() } }
         calculator.show(beside: view.window)
     }
 

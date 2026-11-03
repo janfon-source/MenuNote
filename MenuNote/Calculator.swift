@@ -9,6 +9,8 @@ final class CalculatorWindow: NSObject, NSWindowDelegate {
 
     /// Puts the shown number at the note's insertion point.
     var onInsert: ((String) -> Void)?
+    /// Brings up the note, after the titlebar's buttons, to paste into or to see what went in.
+    var onShowNote: (() -> Void)?
 
     private var panel: NSPanel?
     private let pad = CalculatorView()
@@ -90,17 +92,25 @@ final class CalculatorWindow: NSObject, NSWindowDelegate {
         return b
     }
 
-    private func copyResult() {
-        guard let text = pad.engine.plainResult else { return NSSound.beep() }
+    @discardableResult
+    private func copyResult() -> Bool {
+        guard let text = pad.engine.plainResult else {
+            NSSound.beep()
+            return false
+        }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+        return true
     }
 
-    @objc private func copyClicked(_ sender: Any?) { copyResult() }
+    @objc private func copyClicked(_ sender: Any?) {
+        if copyResult() { onShowNote?() }
+    }
 
     @objc private func insertClicked(_ sender: Any?) {
         guard let text = pad.engine.plainResult, let onInsert else { return NSSound.beep() }
         onInsert(text)
+        onShowNote?()
     }
 
     /// Hidden, not closed, so the number is still there next time.
