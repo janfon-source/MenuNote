@@ -196,6 +196,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
             toolButton("character", "插入 ASCII 字元：標點與符號、數字、字母，附十進位和十六進位代碼",
                        "Insert an ASCII Character: punctuation, symbols, digits and letters, with their codes in decimal and hex",
                        #selector(showASCIIMenu(_:))),
+            toolButton(image: CalculatorIcon.image, "計算機", "Calculator", #selector(showCalculator(_:))),
             markdownButton,
             splitButton,
             spacer,
@@ -500,6 +501,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
     private func toolButton(_ symbol: String, _ zh: String, _ en: String, _ action: Selector) -> NSButton {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!
             .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))!
+        return toolButton(image: image, zh, en, action)
+    }
+
+    private func toolButton(image: NSImage, _ zh: String, _ en: String, _ action: Selector) -> NSButton {
         let b = NSButton(image: image, target: self, action: action)
         b.isBordered = false
         b.bezelStyle = .regularSquare
@@ -1135,6 +1140,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSOpenSa
         if previewMode == .full { previewMode = .off }   // the editor, to type into
         textView.insertText(character, replacementRange: textView.selectedRange())
         view.window?.makeFirstResponder(textView)
+    }
+
+    // MARK: - Calculator
+
+    @objc func showCalculator(_ sender: Any?) {
+        let calculator = CalculatorWindow.shared
+        calculator.onInsert = { [weak self] text in self?.insertText(text) }
+        calculator.show(beside: view.window)
+    }
+
+    /// Inserts at the insertion point, replacing any selection, as one undoable edit.
+    private func insertText(_ text: String) {
+        if previewMode == .full { previewMode = .off }
+        textView.insertText(text, replacementRange: textView.selectedRange())
     }
 
     /// The system's picker, for emoji beyond the menu's.
